@@ -203,7 +203,7 @@
 .loadingOverlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(79, 137, 245, 0.92);
+    background: rgba(255, 255, 255, 0.96);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -212,22 +212,18 @@
     backdrop-filter: blur(10px);
 }
 
-.spinner {
-    width: 64px;
-    height: 64px;
-    border: 6px solid rgba(255,255,255,0.25);
-    border-radius: 50%;
-    border-top-color: #FFFFFF;
-    animation: spin 0.8s linear infinite;
-    margin-bottom: var(--spacing-xl);
-}
-
 .loadingOverlay p {
-    color: #FFFFFF;
+    color: #1A1A2E;
     font-size: var(--font-size-xl);
     font-weight: 900;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
+}
+
+.statusSubtext {
+    color: rgba(26, 26, 46, 0.78);
+    font-size: 16px !important;
+    font-weight: 500 !important;
 }
 
 .statusSubtext {
@@ -246,6 +242,20 @@
     z-index: 100;
     font-weight: 800;
     box-shadow: var(--clay-shadow-coral);
+}
+
+.readyMessage {
+    position: absolute;
+    top: 40px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #1A1A2E;
+    padding: var(--spacing-md) var(--spacing-xl);
+    border-radius: var(--radius-full);
+    z-index: 100;
+    font-weight: 700;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+    max-width: 90%;
+    text-align: center;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }

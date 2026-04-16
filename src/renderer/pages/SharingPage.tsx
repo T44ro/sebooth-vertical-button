@@ -135,7 +135,7 @@ function SharingPage(): JSX.Element {
                 ) : qrUrl ? (
                     <>
                         <div className={styles.qrCode}>
-                            <QRCode value={qrUrl} size={250} level="H" />
+                            <QRCode value={qrUrl} size={360} level="H" />
                         </div>
                         <p className={styles.scanText}>Aim your camera here</p>
                     </>

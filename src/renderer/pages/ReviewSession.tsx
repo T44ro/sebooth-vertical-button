@@ -30,6 +30,8 @@ const ReviewSession: React.FC = () => {
     
     const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
     const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({})
+    const [isPreviewMode, setIsPreviewMode] = useState(false)
+    const [previewIndex, setPreviewIndex] = useState(0)
     const containerRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -45,10 +47,33 @@ const ReviewSession: React.FC = () => {
 
     const getScale = () => {
         if (!containerRef.current) return 1
-        // Allow room for absolute Header (top) and Tools Panel (bottom)
-        const padding = 280
+        // Workspace now fills available space, account for padding
+        const padding = 80 // padding from .workspace
+        const availableWidth = containerRef.current.clientWidth - padding
         const availableHeight = containerRef.current.clientHeight - padding
-        return availableHeight / sessionFrame.canvasHeight
+        const scaleX = availableWidth / sessionFrame.canvasWidth
+        const scaleY = availableHeight / sessionFrame.canvasHeight
+        return Math.min(scaleX, scaleY)
+    }
+
+    // Compute full transform including translation so scaled canvas stays centered
+    const getCanvasTransform = () => {
+        const scale = getScale()
+        if (!containerRef.current) return { transform: `scale(${scale})`, transformOrigin: 'center center' }
+        const cw = containerRef.current.clientWidth
+        const ch = containerRef.current.clientHeight
+
+        const scaledW = sessionFrame.canvasWidth * scale
+        const scaledH = sessionFrame.canvasHeight * scale
+
+        const translateX = Math.round((cw - scaledW) / 2)
+        const translateY = Math.round((ch - scaledH) / 2)
+
+        // translate first, then scale. Use top-left origin so slot left/top coordinates map as-is
+        return {
+            transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
+            transformOrigin: 'top left'
+        }
     }
 
     const handleWheel = (e: React.WheelEvent, slotId: string) => {
@@ -66,68 +91,6 @@ const ReviewSession: React.FC = () => {
         newScale = Math.max(0.5, Math.min(newScale, 5))
         
         updatePhoto(sourceSlotId, { scale: newScale })
-    }
-
-    const handleDragEnd = (event: any, info: any, physicalSlotId: string) => {
-        const sourceA = sessionFrame.slots.find(s => s.id === physicalSlotId)?.duplicateOfSlotId || physicalSlotId;
-        
-        // Find if we dragged it over a different slot
-        const droppedElements = document.elementsFromPoint(info.point.x, info.point.y);
-        const targetSlotEl = droppedElements.find(el => el.hasAttribute('data-slot-id'));
-        const targetSlotId = targetSlotEl ? targetSlotEl.getAttribute('data-slot-id') : null;
-
-        if (targetSlotId && targetSlotId !== physicalSlotId) {
-            const sourceB = sessionFrame.slots.find(s => s.id === targetSlotId)?.duplicateOfSlotId || targetSlotId;
-            
-            if (sourceA !== sourceB) {
-                swapPhotos(sourceA, sourceB);
-            }
-            setSelectedSlotId(targetSlotId);
-            return;
-        }
-
-        // Just regular pan
-        const photo = photos.find(p => p.slotId === sourceA);
-        if (!photo) return;
-        
-        const viewScale = getScale()
-        const dx = info.offset.x / viewScale
-        const dy = info.offset.y / viewScale
-
-        let newPanX = (photo.panX || 0) + dx;
-        let newPanY = (photo.panY || 0) + dy;
-
-        // Calculate softer clamp boundaries
-        const slot = sessionFrame.slots.find(s => s.id === physicalSlotId);
-        if (slot) {
-            const imgAspect = aspectRatios[physicalSlotId] || 1.5;
-            const slotAspect = slot.width / slot.height;
-            let drawWidth, drawHeight;
-            if (imgAspect > slotAspect) {
-                drawHeight = slot.height;
-                drawWidth = slot.height * imgAspect;
-            } else {
-                drawWidth = slot.width;
-                drawHeight = slot.width / imgAspect;
-            }
-            const scale = photo.scale || 1;
-            
-            // Allow panning until edge is reached, plus a soft margin so it doesn't disappear
-            const maxPanX = Math.max(0, (drawWidth * scale - slot.width) / 2);
-            const maxPanY = Math.max(0, (drawHeight * scale - slot.height) / 2);
-            
-            // Add a soft margin (40% of the slot size) so it doesn't just disappear completely in case of drastic scale changes
-            const softMarginX = slot.width * 0.4;
-            const softMarginY = slot.height * 0.4;
-
-            newPanX = Math.max(-maxPanX - softMarginX, Math.min(newPanX, maxPanX + softMarginX));
-            newPanY = Math.max(-maxPanY - softMarginY, Math.min(newPanY, maxPanY + softMarginY));
-        }
-
-        updatePhoto(sourceA, {
-            panX: newPanX,
-            panY: newPanY
-        });
     }
 
     const handleZoomIn = () => {
@@ -158,6 +121,32 @@ const ReviewSession: React.FC = () => {
         navigate('/capture')
     }
 
+    const handleSwipe = (direction: 'left' | 'right') => {
+        const filledSlots = sessionFrame.slots.filter(slot => {
+            const sourceSlotId = slot.duplicateOfSlotId || slot.id
+            return photos.some(p => p.slotId === sourceSlotId)
+        })
+        
+        if (direction === 'left' && previewIndex < filledSlots.length - 1) {
+            setPreviewIndex(previewIndex + 1)
+        } else if (direction === 'right' && previewIndex > 0) {
+            setPreviewIndex(previewIndex - 1)
+        }
+    }
+
+    const handlePreviewRetake = () => {
+        const filledSlots = sessionFrame.slots.filter(slot => {
+            const sourceSlotId = slot.duplicateOfSlotId || slot.id
+            return photos.some(p => p.slotId === sourceSlotId)
+        })
+        const currentSlot = filledSlots[previewIndex]
+        if (currentSlot) {
+            const sourceSlotId = currentSlot.duplicateOfSlotId || currentSlot.id
+            removePhoto(sourceSlotId)
+            navigate('/capture')
+        }
+    }
+
     // Auto select first slot
     useEffect(() => {
         if (!selectedSlotId && sessionFrame.slots.length > 0) {
@@ -168,6 +157,13 @@ const ReviewSession: React.FC = () => {
             setSelectedSlotId(firstFilledSlot?.id || sessionFrame.slots[0].id)
         }
     }, [selectedSlotId, sessionFrame, photos])
+
+    // Reset preview index when entering preview mode
+    useEffect(() => {
+        if (isPreviewMode) {
+            setPreviewIndex(0)
+        }
+    }, [isPreviewMode])
 
     // Retrieve current filter style
     const currentFilterDef = FILTERS.find(f => f.id === selectedFilter);
@@ -195,145 +191,203 @@ const ReviewSession: React.FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
         >
-            <div className={styles.header}>
-                <h2>Review & Filter</h2>
-                <p>Drag to move or swap photos. Scroll to zoom. Pick a filter before continuing.</p>
-            </div>
+            {!isPreviewMode ? (
+                <div className={styles.mainLayout}>
+                    {/* Main Workspace - Takes most of the space */}
+                    <div className={styles.workspace} ref={containerRef}>
+                                        <div
+                                            className={styles.canvasContainer}
+                                            style={{
+                                                width: sessionFrame.canvasWidth,
+                                                height: sessionFrame.canvasHeight,
+                                                transform: `scale(${getScale()})`,
+                                                transformOrigin: 'center center'
+                                            }}
+                                        >
+                            {sessionFrame.slots.map(slot => {
+                                const sourceSlotId = slot.duplicateOfSlotId || slot.id
+                                const photo = photos.find(p => p.slotId === sourceSlotId)
+                                if (!photo) return null
 
-            <div className={styles.workspace} ref={containerRef}>
-                <div 
-                    className={styles.canvasContainer}
-                    style={{
-                        width: sessionFrame.canvasWidth,
-                        height: sessionFrame.canvasHeight,
-                        transform: `scale(${getScale()})`,
-                        transformOrigin: 'center center'
-                    }}
-                >
-                    {sessionFrame.slots.map(slot => {
-                        const sourceSlotId = slot.duplicateOfSlotId || slot.id
-                        const photo = photos.find(p => p.slotId === sourceSlotId)
-                        if (!photo) return null
-                        
-                        const isSelected = selectedSlotId === slot.id
-                        const imgAspect = aspectRatios[slot.id] || 1.5; // defaults
-                        const slotAspect = slot.width / slot.height;
+                                const isSelected = selectedSlotId === slot.id
+                                const motionKey = `${slot.id}-${photo.imagePath}`;
 
-                        let drawWidth, drawHeight;
-                        if (imgAspect > slotAspect) {
-                            drawHeight = slot.height;
-                            drawWidth = slot.height * imgAspect;
-                        } else {
-                            drawWidth = slot.width;
-                            drawHeight = slot.width / imgAspect;
-                        }
+                                return (
+                                    <div
+                                        key={slot.id}
+                                        className={`${styles.slotWrapper} ${isSelected ? styles.selected : ''}`}
+                                        style={{
+                                            left: slot.x,
+                                            top: slot.y,
+                                            width: slot.width,
+                                            height: slot.height,
+                                            transform: `rotate(${slot.rotation}deg)`,
+                                            transformOrigin: 'center center',
+                                            overflow: 'hidden'
+                                        }}
+                                        data-slot-id={slot.id} // crucial for target identification
+                                        onPointerDown={() => setSelectedSlotId(slot.id)}
+                                        onWheel={(e) => handleWheel(e, slot.id)}
+                                    >
+                                        <img
+                                            key={motionKey}
+                                            src={photo.imagePath}
+                                            className={styles.photoImage}
+                                            draggable={false}
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                objectFit: 'cover',
+                                                transform: `scale(${photo.scale || 1})`,
+                                                transformOrigin: 'center center',
+                                                ...filterStyle
+                                            }}
+                                        />
+                                    </div>
+                                )
+                            })}
 
-                        // Use the physical slot id plus the photo path so duplicate slots keep unique keys.
-                        const motionKey = `${slot.id}-${photo.imagePath}`;
+                            <img
+                                src={`file:///${sessionFrame.overlayPath.replace(/\\/g, '/')}`}
+                                className={styles.frameOverlay}
+                                alt="Frame Override"
+                            />
+                        </div>
+                    </div>
 
-                        return (
-                            <div 
-                                key={slot.id}
-                                className={`${styles.slotWrapper} ${isSelected ? styles.selected : ''}`}
-                                style={{
-                                    left: slot.x,
-                                    top: slot.y,
-                                    width: slot.width,
-                                    height: slot.height,
-                                    transform: `rotate(${slot.rotation}deg)`
-                                }}
-                                data-slot-id={slot.id} // crucial for target identification
-                                onPointerDown={() => setSelectedSlotId(slot.id)}
-                                onWheel={(e) => handleWheel(e, slot.id)}
-                            >
-                                <motion.img 
-                                    key={motionKey}
-                                    src={photo.imagePath} 
-                                    className={styles.photoImage}
-                                    draggable={false}
-                                    onLoad={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        setAspectRatios(prev => ({ 
-                                            ...prev, 
-                                            [slot.id]: target.naturalWidth / target.naturalHeight 
-                                        }))
-                                    }}
-                                    style={{
-                                        width: drawWidth,
-                                        height: drawHeight,
-                                        left: (slot.width - drawWidth) / 2,
-                                        top: (slot.height - drawHeight) / 2,
-                                        scale: photo.scale || 1,
-                                        ...filterStyle
-                                    }}
-                                    initial={{ x: photo.panX || 0, y: photo.panY || 0 }}
-                                    drag
-                                    dragMomentum={false}
-                                    onDragEnd={(e, info) => handleDragEnd(e, info, slot.id)}
-                                    // ensure clicking makes it selected
-                                    onDragStart={() => setSelectedSlotId(slot.id)}
-                                />
+                    {/* Right Sidebar with all controls */}
+                    <div className={styles.rightSidebar}>
+                        <div className={styles.controlsSection}>
+                            <div className={styles.toolGroup}>
+                                <button
+                                    className={styles.toolButton}
+                                    onClick={handleZoomOut}
+                                    disabled={!selectedSlotId}
+                                    title="Zoom Out"
+                                >
+                                    -
+                                </button>
+                                <button
+                                    className={styles.toolButton}
+                                    onClick={handleZoomIn}
+                                    disabled={!selectedSlotId}
+                                    title="Zoom In"
+                                >
+                                    +
+                                </button>
                             </div>
-                        )
-                    })}
 
-                    <img 
-                        src={`file:///${sessionFrame.overlayPath.replace(/\\/g, '/')}`} 
-                        className={styles.frameOverlay} 
-                        alt="Frame Override" 
-                    />
-                </div>
-            </div>
+                            <div className={styles.toolGroup}>
+                                <button
+                                    className={styles.retakeBtn}
+                                    disabled={!selectedSlotId}
+                                    onClick={handleRetake}
+                                >
+                                    📸 Retake Selected
+                                </button>
+                            </div>
 
-            <div className={styles.toolsPanel}>
-                <div className={styles.toolGroup}>
-                    <button 
-                        className={styles.toolButton} 
-                        onClick={handleZoomOut}
-                        disabled={!selectedSlotId}
-                        title="Zoom Out"
-                    >
-                        -
-                    </button>
-                    <button 
-                        className={styles.toolButton} 
-                        onClick={handleZoomIn}
-                        disabled={!selectedSlotId}
-                        title="Zoom In"
-                    >
-                        +
-                    </button>
-                </div>
-                
-                <div className={styles.toolGroup}>
-                    <button 
-                        className={styles.retakeBtn}
-                        disabled={!selectedSlotId}
-                        onClick={handleRetake}
-                    >
-                        📸 Retake Selected
-                    </button>
-                </div>
+                            <div className={styles.filterTabs}>
+                                {FILTERS.map(filter => (
+                                    <button
+                                        key={filter.id}
+                                        className={`${styles.filterBtn} ${selectedFilter === filter.id ? styles.active : ''}`}
+                                        onClick={() => setSessionFilter(filter.id)}
+                                    >
+                                        <div className={styles.filterPreview} style={filter.style}>
+                                            {selectedPhoto && <img src={selectedPhoto.imagePath} alt={filter.name} />}
+                                        </div>
+                                        <span>{filter.name}</span>
+                                    </button>
+                                ))}
+                            </div>
 
-                <div className={styles.filterTabs}>
-                    {FILTERS.map(filter => (
-                        <button
-                            key={filter.id}
-                            className={`${styles.filterBtn} ${selectedFilter === filter.id ? styles.active : ''}`}
-                            onClick={() => setSessionFilter(filter.id)}
+                            <button className={styles.nextBtn} onClick={() => navigate('/output')}>
+                                Next Step ➔
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className={styles.previewContainer}>
+                    <div className={styles.previewPhotoContainer}>
+                        {(() => {
+                            const filledSlots = sessionFrame.slots.filter(slot => {
+                                const sourceSlotId = slot.duplicateOfSlotId || slot.id
+                                return photos.some(p => p.slotId === sourceSlotId)
+                            })
+                            const currentSlot = filledSlots[previewIndex]
+                            const sourceSlotId = currentSlot?.duplicateOfSlotId || currentSlot?.id
+                            const photo = sourceSlotId ? photos.find(p => p.slotId === sourceSlotId) : null
+                            
+                            return photo ? (
+                                <div className={styles.previewPhotoWrapper}>
+                                    <motion.div 
+                                        className={styles.previewPhoto}
+                                        drag="x"
+                                        dragConstraints={{ left: 0, right: 0 }}
+                                        dragElastic={0.2}
+                                        onDragEnd={(event, info) => {
+                                            const threshold = 50;
+                                            if (info.offset.x > threshold) {
+                                                handleSwipe('right');
+                                            } else if (info.offset.x < -threshold) {
+                                                handleSwipe('left')
+                                            }
+                                        }}
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.8 }}
+                                        transition={{ duration: 0.3 }}
+                                    >
+                                        <img 
+                                            src={photo.imagePath} 
+                                            alt={`Photo ${previewIndex + 1}`}
+                                            style={filterStyle}
+                                        />
+                                    </motion.div>
+                                    
+                                    {/* Navigation buttons below the image */}
+                                    <div className={styles.navigationButtons}>
+                                        <button 
+                                            className={styles.navBtn} 
+                                            onClick={() => handleSwipe('right')}
+                                            disabled={previewIndex === 0}
+                                        >
+                                            ‹
+                                        </button>
+                                        <div className={styles.photoIndicator}>
+                                            {previewIndex + 1} / {filledSlots.length}
+                                        </div>
+                                        <button 
+                                            className={styles.navBtn} 
+                                            onClick={() => handleSwipe('left')}
+                                            disabled={previewIndex === filledSlots.length - 1}
+                                        >
+                                            ›
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : null
+                        })()}
+                    </div>
+                    
+                    <div className={styles.previewControls}>
+                        <button 
+                            className={styles.retakeBtn}
+                            onClick={handlePreviewRetake}
                         >
-                            <div className={styles.filterPreview} style={filter.style}>
-                                {selectedPhoto && <img src={selectedPhoto.imagePath} alt={filter.name} />}
-                            </div>
-                            <span>{filter.name}</span>
+                            📸 Retake This Photo
                         </button>
-                    ))}
+                        <button 
+                            className={styles.continueBtn}
+                            onClick={() => setIsPreviewMode(false)}
+                        >
+                            Continue to Edit
+                        </button>
+                    </div>
                 </div>
-
-                <button className={styles.nextBtn} onClick={() => navigate('/output')}>
-                    Next Step ➔
-                </button>
-            </div>
+            )}
         </motion.div>
     )
 }

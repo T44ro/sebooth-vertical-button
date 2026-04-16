@@ -112,6 +112,30 @@
     overflow: hidden;
 }
 
+/* Safe area overlay used to show black bars for portrait slots */
+.safeAreaOverlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+}
+
+.safeAreaOverlay .leftBar,
+.safeAreaOverlay .rightBar {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.600);
+    transition: width 120ms ease, left 120ms ease;
+}
+
+.safeAreaOverlay .centerBox {
+    position: absolute;
+    border: 2px dashed rgba(255,255,255,0.25);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
 .video {
     width: 100%;
     height: 100%;
@@ -498,6 +522,184 @@
 }
 
 .statusDot.connected { background: var(--clay-green); }
+
+/* Review Popup */
+.reviewPopupOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.reviewPopup {
+    background: #FFFFFF;
+    border-radius: var(--radius-2xl);
+    width: 95%;
+    max-width: 900px;
+    height: 95vh;
+    max-height: 98vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--clay-shadow-lg);
+    overflow: hidden;
+}
+
+.reviewPopupHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-lg);
+    background: var(--clay-cream);
+    border-bottom: 2px solid var(--clay-yellow);
+}
+
+.reviewPopupHeader h3 {
+    margin: 0;
+    color: var(--color-text-main);
+    font-size: var(--font-size-xl);
+    font-weight: 900;
+}
+
+.swipeHint {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+.reviewPopupPhoto {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-md);
+    background: #000;
+    position: relative;
+}
+
+.photoWrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+.photoContainer {
+    max-width: 100%;
+    max-height: 100%;
+    cursor: grab;
+}
+
+.photoContainer:active {
+    cursor: grabbing;
+}
+
+.reviewPopupPhoto img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: var(--radius-lg);
+}
+
+.navigationButtons {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    background: rgba(0, 0, 0, 0.5);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-xl);
+    backdrop-filter: blur(10px);
+}
+
+.navBtn {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.5rem;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+.navBtn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+.navBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.photoCounter {
+    color: white;
+    font-weight: 700;
+    font-size: var(--font-size-lg);
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+}
+
+.reviewPopupControls {
+    padding: var(--spacing-md);
+    background: var(--clay-cream);
+    border-top: 2px solid var(--clay-yellow);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.retakeBtn, .continueBtn {
+    width: 100%;
+    background: var(--clay-coral);
+    color: #FFFFFF;
+    border: none;
+    padding: var(--spacing-md) var(--spacing-xl);
+    border-radius: var(--radius-full);
+    height: 52px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: all var(--transition-bouncy);
+    box-shadow: var(--clay-shadow-coral);
+    font-size: var(--font-size-base);
+}
+
+.continueBtn {
+    background: var(--clay-blue);
+    box-shadow: var(--clay-shadow-blue);
+}
+
+.retakeBtn:hover:not(:disabled), .continueBtn:hover:not(:disabled) { 
+    transform: translateY(-4px) scale(1.03); 
+}
+
+.retakeBtn:active:not(:disabled), .continueBtn:active:not(:disabled) { 
+    transform: scale(0.92); 
+    box-shadow: var(--clay-shadow-sm); 
+}
+
+.retakeBtn:disabled, .continueBtn:disabled { 
+    opacity: 0.4; 
+    cursor: not-allowed; 
+}
 
 /* Loading Overlay */
 .loadingOverlay {

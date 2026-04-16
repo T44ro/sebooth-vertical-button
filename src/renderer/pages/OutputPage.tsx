@@ -2,8 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useFrameStore, useSessionStore, useFilterStore, useAppConfig } from '../stores'
+import { PhotoSlot } from '@shared/types'
 import styles from './OutputPage.module.css'
 import { supabase } from '../lib/supabase'
+import Lottie from 'lottie-react'
+import PA22Animation from '../assets/PA22.json'
 
 function OutputPage(): JSX.Element {
     const navigate = useNavigate()
@@ -25,9 +28,11 @@ function OutputPage(): JSX.Element {
     const [liveVideoPath, setLiveVideoPath] = useState<string | null>(null)
     const [compositeDataUrl, setCompositeDataUrl] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [readyMessage, setReadyMessage] = useState<string | null>(null)
     const [isProcessing, setIsProcessing] = useState(true)
     const [isUploading, setIsUploading] = useState(false)
     const [uploadStatus, setUploadStatus] = useState<string>('')
+    const autoOpenRef = useRef(false)
     const { setCloudSessionId } = useSessionStore()
 
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -60,12 +65,38 @@ function OutputPage(): JSX.Element {
     }
 
     // New: Trigger upload when processing is done and composite is ready
+    const resolveSourceSlotId = (slot: PhotoSlot): string => {
+        if (!slot.duplicateOfSlotId) return slot.id
+        const sourceSlot = sessionFrame.slots.find(s => s.id === slot.duplicateOfSlotId)
+        return sourceSlot ? resolveSourceSlotId(sourceSlot) : slot.duplicateOfSlotId
+    }
+
+    const getPhotoForSlot = (slot: PhotoSlot) => {
+        const sourceSlotId = resolveSourceSlotId(slot)
+        return photos.find(p => p.slotId === sourceSlotId)
+    }
+
     useEffect(() => {
         if (!isProcessing && compositeDataUrl && config.sharingMode === 'cloud') {
             handleCloudUpload()
         }
     }, [isProcessing, compositeDataUrl, config.sharingMode])
-    
+
+    useEffect(() => {
+        if (!isProcessing && photos.length > 0 && compositeDataUrl && !activeMedia && !autoOpenRef.current) {
+            autoOpenRef.current = true
+            setActiveMedia('strip')
+            setReadyMessage('Photo Strip siap! Ketuk kembali jika ingin memilih GIF atau Live Photo.')
+            setTimeout(() => setReadyMessage(null), 5000)
+        }
+    }, [isProcessing, photos.length, compositeDataUrl, activeMedia])
+
+    useEffect(() => {
+        if (!isProcessing && photos.length === 0) {
+            setReadyMessage('Belum ada foto diambil. Kembali ke sesi capture untuk mengambil foto terlebih dahulu.')
+        }
+    }, [isProcessing, photos.length])
+
     // We remove the strict requirement for gif and video to avoid blocking upload if those fail
     // They will be uploaded if they eventually arrive while handleCloudUpload is running or in a retry
 
@@ -98,20 +129,18 @@ function OutputPage(): JSX.Element {
                 try {
                     setUploadStatus('Memproses komposisi video Live...')
                     const photosForSave = sessionFrame.slots.map((slot, i) => {
-                        const targetId = slot.duplicateOfSlotId || slot.id
-                        const photo = photos.find(p => p.slotId === targetId)
-                        return { 
-                            path: photo?.imagePath || '', 
-                            filename: `photo_${i + 1}.jpg` 
+                        const photo = getPhotoForSlot(slot)
+                        return {
+                            path: photo?.imagePath || '',
+                            filename: `photo_${i + 1}.jpg`
                         }
                     })
 
                     const videosForSave = sessionFrame.slots.map((slot, i) => {
-                        const targetId = slot.duplicateOfSlotId || slot.id
-                        const photo = photos.find(p => p.slotId === targetId)
-                        return { 
-                            path: photo?.videoPath || '', 
-                            filename: `video_${i + 1}.mp4` 
+                        const photo = getPhotoForSlot(slot)
+                        return {
+                            path: photo?.videoPath || '',
+                            filename: `video_${i + 1}.mp4`
                         }
                     })
 
@@ -274,7 +303,9 @@ function OutputPage(): JSX.Element {
         const loadImage = (src: string): Promise<HTMLImageElement> => {
             return new Promise((resolve, reject) => {
                 const img = new Image()
-                img.crossOrigin = 'anonymous'
+                if (!src.startsWith('file:///') && !src.startsWith('data:')) {
+                    img.crossOrigin = 'anonymous'
+                }
                 img.onload = () => resolve(img)
                 img.onerror = reject
                 img.src = src
@@ -325,7 +356,9 @@ function OutputPage(): JSX.Element {
         const loadImage = (src: string): Promise<HTMLImageElement> => {
             return new Promise((resolve, reject) => {
                 const img = new Image()
-                img.crossOrigin = 'anonymous'
+                if (!src.startsWith('file:///') && !src.startsWith('data:')) {
+                    img.crossOrigin = 'anonymous'
+                }
                 img.onload = () => resolve(img)
                 img.onerror = reject
                 img.src = src
@@ -343,8 +376,7 @@ function OutputPage(): JSX.Element {
             ctx.filter = filterStr;
 
             for (const slot of sessionFrame.slots) {
-                const sourceSlotId = slot.duplicateOfSlotId || slot.id
-                const photo = photos.find(p => p.slotId === sourceSlotId)
+                const photo = getPhotoForSlot(slot)
                 if (!photo) continue
 
                 try {
@@ -480,8 +512,7 @@ function OutputPage(): JSX.Element {
                         transformOrigin: 'top left'
                     }}>
                         {sessionFrame.slots.map(slot => {
-                            const sourceSlotId = slot.duplicateOfSlotId || slot.id
-                            const photo = photos.find(p => p.slotId === sourceSlotId)
+                            const photo = getPhotoForSlot(slot)
                             if (!photo) return null
                             
                             // Use video if available, fallback to image if not
@@ -574,12 +605,20 @@ function OutputPage(): JSX.Element {
                         exit={{ opacity: 0 }}
                         className={styles.loadingOverlay}
                     >
-                        <div className={styles.spinner}></div>
+                        <Lottie 
+                            animationData={PA22Animation} 
+                            loop={true} 
+                            style={{ width: 360, height: 360, marginBottom: 'var(--spacing-xl)' }}
+                        />
                         <p>{isUploading ? 'Uploading to Cloud...' : 'Processing Magic...'}</p>
                         {uploadStatus && <p className={styles.statusSubtext}>{uploadStatus}</p>}
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {readyMessage && !isProcessing && !isUploading && (
+                <div className={styles.readyMessage}>{readyMessage}</div>
+            )}
 
             {/* 3 Interactive Buttons */}
             <AnimatePresence mode="wait">
