@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import QRCode from 'react-qr-code'
-import { useSessionStore, useAppConfig } from '../stores'
+import { useSessionStore, useAppConfig, useQueueStore } from '../stores'
 import { PrintQuantityModal } from '../components/PrintQuantityModal'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
 import styles from './SharingPage.module.css'
@@ -11,6 +11,7 @@ function SharingPage(): JSX.Element {
     const navigate = useNavigate()
     const { currentSession, endSession } = useSessionStore()
     const { config } = useAppConfig()
+    const { activeTicketNumber, activeTicketId, reset: resetQueue } = useQueueStore()
 
     const [qrUrl, setQrUrl] = useState<string | null>(null)
     const [isGenerating, setIsGenerating] = useState(true)
@@ -95,14 +96,42 @@ function SharingPage(): JSX.Element {
         navigate('/printing', { state: { printQuantity: quantity } })
     }
 
-    const handleConfirmBackHome = () => {
-        endSession()
-        navigate('/')
+    const sendSessionCompleted = async () => {
+        if (config.queueEnabled && config.queueEventId && activeTicketNumber) {
+            try {
+                const windowApi = (window as any).api
+                await windowApi.queue.sendSessionCompleted({
+                    event_id: config.queueEventId,
+                    ticket_number: activeTicketNumber,
+                    session_id: currentSession?.id
+                })
+                console.log('[SharingPage] session_completed webhook sent')
+            } catch (error) {
+                console.error('[SharingPage] Failed to send session_completed:', error)
+            }
+        }
     }
 
-    const handleHome = () => {
+    const handleConfirmBackHome = async () => {
+        await sendSessionCompleted()
         endSession()
-        navigate('/')
+        if (config.queueEnabled && config.queueEventId) {
+            resetQueue()
+            navigate('/queue')
+        } else {
+            navigate('/')
+        }
+    }
+
+    const handleHome = async () => {
+        await sendSessionCompleted()
+        endSession()
+        if (config.queueEnabled && config.queueEventId) {
+            resetQueue()
+            navigate('/queue')
+        } else {
+            navigate('/')
+        }
     }
 
     return (

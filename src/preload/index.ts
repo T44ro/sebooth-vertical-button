@@ -221,6 +221,50 @@ const api = {
             ipcRenderer.invoke('cloud:get-queue')
     },
 
+    // Queue APIs (Website Queue Integration)
+    queue: {
+        startPolling: (config: { eventId: string; secret: string; apiUrl: string }): Promise<APIResponse<void>> =>
+            ipcRenderer.invoke('queue:start-polling', config),
+
+        stopPolling: (): Promise<APIResponse<void>> =>
+            ipcRenderer.invoke('queue:stop-polling'),
+
+        getStatus: (): Promise<APIResponse<any>> =>
+            ipcRenderer.invoke('queue:get-status'),
+
+        sendSessionStarted: (payload: {
+            event_id: string
+            ticket_number: number
+        }): Promise<APIResponse<any>> =>
+            ipcRenderer.invoke('queue:send-session-started', payload),
+
+        sendSessionCompleted: (payload: {
+            event_id: string
+            ticket_number: number
+            session_id?: string
+        }): Promise<APIResponse<any>> =>
+            ipcRenderer.invoke('queue:send-session-completed', payload),
+
+        generateToken: (params: {
+            eventId: string
+            sessionId: string
+        }): Promise<APIResponse<any>> =>
+            ipcRenderer.invoke('queue:generate-token', params),
+
+        skipTicket: (payload: any): Promise<APIResponse<any>> =>
+            ipcRenderer.invoke('queue:skip-ticket', payload),
+
+        onStatusUpdate: (callback: (data: {
+            status: any
+            connected: boolean
+            error: string | null
+        }) => void) => {
+            const sub = (_: any, data: any) => callback(data)
+            ipcRenderer.on('queue:status-update', sub)
+            return () => ipcRenderer.removeListener('queue:status-update', sub)
+        }
+    },
+
     // Window APIs
     window: {
         toggleFullscreen: (): Promise<boolean> =>

@@ -1,0 +1,507 @@
+/* ============================================
+   QueueDisplay — Premium Queue Display Page
+   ============================================ */
+
+.container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 30%, #0d1b2a 60%, #0a0a1a 100%);
+    color: #ffffff;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Animated background orbs */
+.container::before,
+.container::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(100px);
+    opacity: 0.15;
+    z-index: 0;
+    animation: orbFloat 12s ease-in-out infinite alternate;
+}
+
+.container::before {
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, #6c5ce7, #a29bfe);
+    top: -200px;
+    right: -100px;
+}
+
+.container::after {
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, #00cec9, #55efc4);
+    bottom: -250px;
+    left: -150px;
+    animation-delay: -6s;
+}
+
+@keyframes orbFloat {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(40px, -30px) scale(1.1); }
+}
+
+/* ── Connection Banner ── */
+.connectionBanner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding: 10px 24px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.connectionBanner.connected {
+    background: linear-gradient(90deg, rgba(0, 206, 201, 0.15), rgba(85, 239, 196, 0.15));
+    color: #55efc4;
+    border-bottom: 1px solid rgba(85, 239, 196, 0.2);
+}
+
+.connectionBanner.disconnected {
+    background: linear-gradient(90deg, rgba(255, 107, 107, 0.2), rgba(255, 71, 87, 0.2));
+    color: #ff6b6b;
+    border-bottom: 1px solid rgba(255, 107, 107, 0.3);
+    animation: warningPulse 2s ease-in-out infinite;
+}
+
+@keyframes warningPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* ── Event Header ── */
+.eventHeader {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.eventName {
+    font-size: 18px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin: 0 0 4px 0;
+}
+
+.boothName {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.3);
+    margin: 0;
+}
+
+/* ── IDLE State ── */
+.idleContainer {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    padding: 48px;
+}
+
+.idleIcon {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(108, 92, 231, 0.2), rgba(162, 155, 254, 0.1));
+    border: 2px solid rgba(108, 92, 231, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    animation: idlePulse 3s ease-in-out infinite;
+}
+
+@keyframes idlePulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.3); }
+    50% { transform: scale(1.05); box-shadow: 0 0 40px 10px rgba(108, 92, 231, 0.15); }
+}
+
+.idleTitle {
+    font-size: 32px;
+    font-weight: 700;
+    text-align: center;
+    background: linear-gradient(135deg, #dfe6e9, #ffffff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0;
+}
+
+.idleSubtitle {
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+    margin: 0;
+}
+
+/* Stats Bar */
+.statsBar {
+    display: flex;
+    gap: 32px;
+    margin-top: 16px;
+}
+
+.statItem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    min-width: 120px;
+}
+
+.statValue {
+    font-size: 28px;
+    font-weight: 700;
+    color: #a29bfe;
+}
+
+.statLabel {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* ── CALLED State ── */
+.calledContainer {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    padding: 48px;
+}
+
+.calledLabel {
+    font-size: 18px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0;
+}
+
+.ticketNumber {
+    font-size: 140px;
+    font-weight: 900;
+    line-height: 1;
+    background: linear-gradient(135deg, #6c5ce7, #a29bfe, #74b9ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ticketPulse 2s ease-in-out infinite;
+    text-shadow: none;
+    margin: 0;
+}
+
+@keyframes ticketPulse {
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.03); filter: brightness(1.2); }
+}
+
+.ticketName {
+    font-size: 28px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0;
+}
+
+.calledInstruction {
+    font-size: 22px;
+    font-weight: 600;
+    color: #55efc4;
+    text-align: center;
+    margin: 0;
+    animation: instructionGlow 2s ease-in-out infinite;
+}
+
+@keyframes instructionGlow {
+    0%, 100% { text-shadow: 0 0 10px rgba(85, 239, 196, 0.3); }
+    50% { text-shadow: 0 0 30px rgba(85, 239, 196, 0.5); }
+}
+
+/* Timeout countdown */
+.timeoutBar {
+    width: 300px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.timeoutProgress {
+    height: 100%;
+    background: linear-gradient(90deg, #6c5ce7, #a29bfe);
+    border-radius: 2px;
+    transition: width 1s linear;
+}
+
+.timeoutText {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.35);
+    margin: 0;
+}
+
+/* Start Session Button */
+.startButton {
+    padding: 20px 64px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 32px rgba(108, 92, 231, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 16px;
+}
+
+.startButton:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 48px rgba(108, 92, 231, 0.5);
+}
+
+.startButton:active {
+    transform: translateY(0);
+}
+
+/* ── QR Overlay ── */
+.qrOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.92);
+    backdrop-filter: blur(20px);
+    gap: 24px;
+}
+
+.qrTitle {
+    font-size: 28px;
+    font-weight: 700;
+    text-align: center;
+    margin: 0;
+    color: #ffffff;
+}
+
+.qrSubtitle {
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.6);
+    text-align: center;
+    margin: 0;
+    max-width: 500px;
+}
+
+.qrCodeWrapper {
+    padding: 24px;
+    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(108, 92, 231, 0.3);
+}
+
+.qrCountdown {
+    font-size: 48px;
+    font-weight: 700;
+    color: #a29bfe;
+    margin: 0;
+}
+
+.qrCountdownLabel {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin: 0;
+}
+
+.skipButton {
+    padding: 14px 48px;
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 8px;
+}
+
+.skipButton:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+/* ── Admin Trigger (reuse from Landing) ── */
+.adminTrigger {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 50;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    overflow: hidden;
+    transition: background 0.2s;
+}
+
+.adminTrigger:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.adminProgress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 100%;
+    background: rgba(108, 92, 231, 0.4);
+    transition: width 0.05s linear;
+    border-radius: 50%;
+}
+
+.adminGear {
+    position: relative;
+    z-index: 1;
+    font-size: 18px;
+    opacity: 0.5;
+}
+
+/* Fallback offline button */
+.fallbackButton {
+    padding: 14px 32px;
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 107, 107, 0.1);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 16px;
+}
+
+.fallbackButton:hover {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ffffff;
+}
+
+/* ── Admin Modal (same as Landing) ── */
+.modalOverlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 500;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 32px;
+    min-width: 340px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal h3 {
+    margin: 0 0 20px;
+    font-size: 20px;
+    color: #ffffff;
+}
+
+.passwordInput {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    color: #ffffff;
+    font-size: 16px;
+    outline: none;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.passwordInput:focus {
+    border-color: #6c5ce7;
+}
+
+.passwordInput.error {
+    border-color: #ff6b6b;
+    animation: shake 0.3s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+}
+
+.submitButton {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+    border: none;
+    border-radius: 10px;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.submitButton:hover {
+    opacity: 0.9;
+}
+
+/* ── Version ── */
+.version {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.15);
+    z-index: 1;
+}

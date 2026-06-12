@@ -8,6 +8,7 @@ import { registerImageHandlers } from './ipc/image.ipc'
 import { registerEmailHandlers } from './ipc/email.ipc'
 import { registerDriveHandlers } from './ipc/drive.ipc'
 import { registerCloudHandlers } from './ipc/cloud.ipc'
+import { registerQueueHandlers } from './ipc/queue.ipc'
 import './services/ConfigService' // Boot ConfigService natively
 
 // Global safeguard to prevent Photobooth crash on USB/Hardware random disconnects
@@ -75,6 +76,7 @@ app.whenReady().then(() => {
     registerEmailHandlers(ipcMain)
     registerDriveHandlers(ipcMain)
     registerCloudHandlers()
+    registerQueueHandlers()
     
     // Auto-sweep old heavy media off SSD
     import('./services/Janitor').then(({ janitor }) => janitor.runCleanup())

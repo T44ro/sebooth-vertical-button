@@ -30,7 +30,12 @@ export class ConfigService {
         sharingMode: 'cloud',
         cloudPortalUrl: '',
         cameraMode: 'mock',
-        selectedCameraId: undefined
+        selectedCameraId: undefined,
+        // Queue Integration
+        queueEnabled: false,
+        queueEventId: '',
+        queueWebhookSecret: 'sebooth-queue-webhook-2026',
+        queueApiUrl: 'https://www.sebooth.in'
     }
 
     constructor() {

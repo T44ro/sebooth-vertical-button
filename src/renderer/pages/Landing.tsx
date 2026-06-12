@@ -26,6 +26,14 @@ function Landing(): JSX.Element {
 
     // Check if video exists (simple check via extension or just try loading)
     useEffect(() => {
+        // Auto-redirect to Queue Display when Queue Mode is active
+        if (config.queueEnabled && config.queueEventId) {
+            navigate('/queue')
+            return
+        }
+    }, [config.queueEnabled, config.queueEventId, navigate])
+
+    useEffect(() => {
         const fetchCameras = async (): Promise<void> => {
             try {
                 const result = await window.api.camera.list()

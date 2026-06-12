@@ -124,6 +124,12 @@ export interface AppConfig {
     wifiPassword?: string
     eventName?: string
     activeFrameId?: string // Legacy support
+
+    // Queue Integration
+    queueEnabled: boolean // Toggle Queue Mode
+    queueEventId: string // UUID of the active queue event
+    queueWebhookSecret: string // Shared secret for webhook auth
+    queueApiUrl: string // Base URL of the website (e.g. https://www.sebooth.in)
 }
 
 export interface LUTFilter {
@@ -176,6 +182,53 @@ export interface ConfigRecord {
     key: string
     value: Record<string, unknown>
     updated_at?: string
+}
+
+// =====================
+// Queue System Types
+// =====================
+
+export interface QueueTicket {
+    id: string
+    queue_number: number
+    display_name: string
+    status: 'waiting' | 'called' | 'in_session' | 'completed' | 'skipped'
+}
+
+export interface QueueEvent {
+    id: string
+    name: string
+    booth_name: string
+}
+
+export interface QueueStatusResponse {
+    event: QueueEvent
+    currentTicket: QueueTicket | null
+    waitingTickets: QueueTicket[]
+    totalWaiting: number
+    avgDurationSec: number
+}
+
+export interface QueueWebhookPayload {
+    event: 'session_started' | 'session_completed'
+    event_id: string
+    ticket_number: number
+    session_id?: string
+}
+
+export interface QueueWebhookResponse {
+    success: boolean
+    ticketId?: string
+    updatedStatus?: string
+    nextTicketNumber?: number | null
+    autoCalledNext?: boolean
+}
+
+export interface QueueSessionTokenResponse {
+    success: boolean
+    token: string
+    qrUrl: string
+    expiresAt: string
 }
 
 // API Response Types

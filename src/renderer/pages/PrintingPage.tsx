@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { useSessionStore, useAppConfig } from '../stores'
+import { useSessionStore, useAppConfig, useQueueStore } from '../stores'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
 import styles from './PrintingPage.module.css'
 // Note: You must place 'printing_animation.mov' (or .mp4) in the src/renderer/assets folder 
@@ -14,6 +14,28 @@ function PrintingPage(): JSX.Element {
     const location = useLocation()
     const { currentSession, endSession } = useSessionStore()
     const { config } = useAppConfig()
+    const { activeTicketNumber, reset: resetQueue } = useQueueStore()
+    
+    const getHomeRoute = () => (config.queueEnabled && config.queueEventId) ? '/queue' : '/'
+    
+    const sendSessionCompletedAndGoHome = async () => {
+        // Send session_completed webhook if in queue mode
+        if (config.queueEnabled && config.queueEventId && activeTicketNumber) {
+            try {
+                await (window as any).api.queue.sendSessionCompleted({
+                    event_id: config.queueEventId,
+                    ticket_number: activeTicketNumber,
+                    session_id: currentSession?.id
+                })
+                console.log('[PrintingPage] session_completed webhook sent')
+            } catch (err) {
+                console.error('[PrintingPage] session_completed webhook failed:', err)
+            }
+            resetQueue()
+        }
+        endSession()
+        navigate(getHomeRoute())
+    }
     
     const [error, setError] = useState<string | null>(null)
     const [printCompleted, setPrintCompleted] = useState(false)
@@ -64,8 +86,7 @@ function PrintingPage(): JSX.Element {
             console.log('[PrintingPage] Printing is disabled, skipping...')
             setError('Printing is disabled in settings')
             setTimeout(() => {
-                endSession()
-                navigate('/')
+                sendSessionCompletedAndGoHome()
             }, 3000)
             return
         }
@@ -75,8 +96,7 @@ function PrintingPage(): JSX.Element {
             console.log('[PrintingPage] No printer selected, skipping...')
             setError('No printer selected in settings')
             setTimeout(() => {
-                endSession()
-                navigate('/')
+                sendSessionCompletedAndGoHome()
             }, 3000)
             return
         }
@@ -131,8 +151,7 @@ function PrintingPage(): JSX.Element {
                 } else {
                     // Success! Mark as completed and go home
                     setPrintCompleted(true)
-                    endSession()
-                    navigate('/')
+                    sendSessionCompletedAndGoHome()
                 }
             } else {
                 setError('Failed to find or save strip for printing')
@@ -144,8 +163,7 @@ function PrintingPage(): JSX.Element {
         } catch (err) {
             setError('Print failed: ' + (err as Error).message)
             setTimeout(() => {
-                endSession()
-                navigate('/')
+                sendSessionCompletedAndGoHome()
             }, 5000)
         }
     }
@@ -155,8 +173,7 @@ function PrintingPage(): JSX.Element {
     }
 
     const handleConfirmBackHome = () => {
-        endSession()
-        navigate('/')
+        sendSessionCompletedAndGoHome()
     }
 
     return (

@@ -18,7 +18,7 @@ function AdminDashboard(): JSX.Element {
     const { filters, addFilter, removeFilter } = useFilterStore()
     const { endSession } = useSessionStore()
 
-    const [activeTab, setActiveTab] = useState<'frames' | 'timers' | 'filters' | 'payment' | 'history' | 'sharing' | 'printers' | 'queue'>('frames')
+    const [activeTab, setActiveTab] = useState<'frames' | 'timers' | 'filters' | 'payment' | 'history' | 'sharing' | 'printers' | 'queue' | 'webhook'>('frames')
     const [cloudQueue, setCloudQueue] = useState<any[]>([])
     const [isLoadingQueue, setIsLoadingQueue] = useState(false)
     const [printQueue, setPrintQueue] = useState<any[]>([])
@@ -496,6 +496,12 @@ function AdminDashboard(): JSX.Element {
                     onClick={() => setActiveTab('queue')}
                 >
                     ☁️ Cloud Queue
+                </button>
+                <button
+                    className={`${styles.tab} ${activeTab === 'webhook' ? styles.active : ''}`}
+                    onClick={() => setActiveTab('webhook')}
+                >
+                    🔗 Queue Integration
                 </button>
             </nav>
 
@@ -1643,6 +1649,105 @@ function AdminDashboard(): JSX.Element {
                          )}
                      </div>
                  )}
+
+                {/* Queue Integration (Webhook) Tab */}
+                {activeTab === 'webhook' && (
+                    <div className={styles.timersTab}>
+                        <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                            <h3>🔗 Website Queue Integration</h3>
+                            <p>Hubungkan aplikasi photobooth dengan sistem antrean digital di website Sebooth</p>
+                            <div className={styles.timerToggle}>
+                                <label className={styles.toggleSwitch}>
+                                    <input
+                                        type="checkbox"
+                                        checked={config.queueEnabled || false}
+                                        onChange={(e) => updateConfig({ queueEnabled: e.target.checked })}
+                                    />
+                                    <span className={styles.toggleSlider}></span>
+                                </label>
+                                <span className={styles.toggleLabel}>
+                                    {config.queueEnabled ? '✅ Queue Mode Aktif' : '⚪ Queue Mode Nonaktif'}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className={styles.timerCard}>
+                            <h3>🌐 API URL</h3>
+                            <p>Base URL website Sebooth</p>
+                            <input
+                                type="text"
+                                value={config.queueApiUrl || 'https://www.sebooth.in'}
+                                onChange={(e) => updateConfig({ queueApiUrl: e.target.value })}
+                                placeholder="https://www.sebooth.in"
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 14px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--color-border, #374151)',
+                                    background: 'var(--color-bg-secondary, #1f2937)',
+                                    color: 'var(--color-text-primary, #f9fafb)',
+                                    fontSize: '14px',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
+
+                        <div className={styles.timerCard}>
+                            <h3>📋 Event ID</h3>
+                            <p>UUID dari event antrean yang aktif di website</p>
+                            <input
+                                type="text"
+                                value={config.queueEventId || ''}
+                                onChange={(e) => updateConfig({ queueEventId: e.target.value })}
+                                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 14px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--color-border, #374151)',
+                                    background: 'var(--color-bg-secondary, #1f2937)',
+                                    color: 'var(--color-text-primary, #f9fafb)',
+                                    fontSize: '14px',
+                                    fontFamily: 'monospace',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
+
+                        <div className={styles.timerCard}>
+                            <h3>🔑 Webhook Secret</h3>
+                            <p>Shared secret untuk autentikasi webhook (harus sama dengan website)</p>
+                            <input
+                                type="password"
+                                value={config.queueWebhookSecret || 'sebooth-queue-webhook-2026'}
+                                onChange={(e) => updateConfig({ queueWebhookSecret: e.target.value })}
+                                placeholder="sebooth-queue-webhook-2026"
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 14px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--color-border, #374151)',
+                                    background: 'var(--color-bg-secondary, #1f2937)',
+                                    color: 'var(--color-text-primary, #f9fafb)',
+                                    fontSize: '14px',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                        </div>
+
+                        <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                            <h3>ℹ️ Cara Kerja</h3>
+                            <div style={{ fontSize: '14px', lineHeight: '1.8', opacity: 0.8 }}>
+                                <p>1. Aktifkan Queue Mode dan isi Event ID dari website</p>
+                                <p>2. Landing page akan otomatis berubah menjadi Queue Display</p>
+                                <p>3. Ketika ada tiket yang dipanggil, layar menampilkan nomor antrean</p>
+                                <p>4. Operator menekan "Mulai Sesi" → QR Code ditampilkan → sesi foto dimulai</p>
+                                <p>5. Setelah sesi selesai, webhook otomatis dikirim dan antrean dilanjutkan</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </main >
 
             <ConfirmBackHomeModal

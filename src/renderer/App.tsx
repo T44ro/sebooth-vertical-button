@@ -12,6 +12,7 @@ import OutputPage from './pages/OutputPage'
 import SharingPage from './pages/SharingPage'
 import PrintingPage from './pages/PrintingPage'
 import GalleryPage from './pages/GalleryPage'
+import QueueDisplay from './pages/QueueDisplay'
 
 function App(): JSX.Element {
     const { config } = useAppConfig()
@@ -46,6 +47,7 @@ function App(): JSX.Element {
             <AnimatePresence mode="wait">
                 <Routes>
                     <Route path="/" element={<Landing />} />
+                    <Route path="/queue" element={<QueueDisplay />} />
                     <Route path="/admin" element={<AdminDashboard />} />
                     <Route path="/frames" element={<FrameSelection />} />
                     <Route path="/payment" element={<PaymentGateway />} />

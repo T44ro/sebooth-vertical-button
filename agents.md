@@ -81,16 +81,17 @@ The desktop codebase strictly adheres to secure Electron paradigms:
 
 ## 5. Desktop Application Feature Flows (`src/renderer/pages/`)
 The Desktop UI is modeled through the following key loops:
-- **`Landing.tsx`**: The idle attract loop interface.
+- **`Landing.tsx`**: The idle attract loop interface. Auto-redirects to QueueDisplay when Queue Mode is active.
+- **`QueueDisplay.tsx`**: Queue system display page. Shows IDLE state (waiting for next ticket) or CALLED state (ticket number + "Mulai Sesi" button). Handles session_started webhook and QR code token display.
 - **`PaymentGateway.tsx`**: Payment verification loop.
 - **`FrameSelection.tsx`**: UI to choose custom layouts, photo counts, and print numbers.
 - **`CaptureSession.tsx`**: The core component managing live DSLR viewfeeds and camera countdowns.
 - **`ReviewSession.tsx`**: Post-processing UI allowing live LUT filter previews, pan/zoom crops, and retake decisions.
 - **`OutputPage.tsx`**: Loading tracker that invokes the Main Process to bundle the final boomerangs, GIFs, and print PDFs.
-- **`SharingPage.tsx`**: Explicitly displays the generated QR Code. This QR directs the visitor to the *External Website* for the photo claim mechanism.
-- **`PrintingPage.tsx`**: Background page quietly forwarding the generated PDF strip to the printer queue.
+- **`SharingPage.tsx`**: Explicitly displays the generated QR Code. Sends session_completed webhook when Queue Mode active.
+- **`PrintingPage.tsx`**: Background page quietly forwarding the generated PDF strip to the printer queue. Auto-cycles to QueueDisplay when Queue Mode active.
 - **`GalleryPage.tsx`**: Local viewer containing recent public prints.
-- **`AdminDashboard.tsx`**: Secure local dashboard for configuration, analytics (`.xlsx` export), and offline service health (`/monitor`).
+- **`AdminDashboard.tsx`**: Secure local dashboard for configuration, analytics (`.xlsx` export), offline service health (`/monitor`), and Queue Integration settings.
 
 ---
 
@@ -117,3 +118,10 @@ The AI Agent is explicitly authorized and encouraged to access, analyze, and mod
 - **April 2026 (Print Base64 Data Handler)**: Updated printer IPC handler and preload to accept base64 image data directly from PrintingPage instead of file paths. Modified `printer:print-with-options` to save base64 data to temporary JPG file before queuing print job. This fixes blank print issue by ensuring composite image data is properly processed through the print pipeline.
 - **April 2026 (PrintingPage Remount Fix)**: Fixed issue where PrintingPage component remounted after successful printing, causing navigation home due to null session. Added `printCompleted` state to prevent premature navigation when printing succeeds, ensuring stable post-print behavior.
 - **April 2026 (SessionTimer Size Reduction)**: Reduced the SessionTimer size and centered it at the top of the screen. Decreased padding from 12px 24px to 8px 16px, reduced font sizes (label from 14px to 12px, value from 24px to 18px), and decreased gap from 12px to 8px for a more compact appearance.
+- **Juni 2026 (Fase 1 - Polling & Deteksi Giliran)** ✅: Implemented full Queue System integration with website Sebooth (sebooth.in). Key features: (1) `QueueService.ts` in Main Process handles 5-second polling to `GET /api/queue/{eventId}/status`, with retry logic and exponential backoff; (2) `queue.ipc.ts` IPC handlers bridge Main↔Renderer securely via preload context bridge; (3) `QueueDisplay.tsx` page replaces Landing when Queue Mode active, showing IDLE state (waiting animation + stats) and CALLED state (ticket number + countdown); (4) `useQueueStore` Zustand store manages queue state; (5) Admin Dashboard "Queue Integration" tab with toggle, API URL, Event ID, and Webhook Secret inputs.
+- **Juni 2026 (Fase 2 - Webhook Session Started & QR Code Display)** ✅: When operator presses "Mulai Sesi" on QueueDisplay, the app: (1) POSTs `session_started` webhook to `/api/queue/webhook`; (2) Requests session token from `/api/queue/generate-session-token`; (3) Displays full-screen QR Code overlay from `qrUrl` with 60-second auto-dismiss countdown; (4) QR allows users to scan and link their phone to the booth session. Includes "Lanjutkan Tanpa Scan" skip button.
+- **Juni 2026 (Fase 3 - Webhook Session Completed & Auto-cycle)** ✅: On session end (SharingPage or PrintingPage), the app: (1) POSTs `session_completed` webhook with `session_id` to `/api/queue/webhook`; (2) Website auto-advances to next ticket and sends push notification; (3) App navigates back to `/queue` (not `/`) to restart the cycle. Both SharingPage and PrintingPage patched to support queue-aware navigation.
+- **Juni 2026 (Fase 4 - Error Handling & Resilience)** ✅: Implemented: (1) Retry logic with exponential backoff (1s→2s→4s, max 3 retries) for all webhook/token API calls; (2) Connection status banner (green=connected, red=disconnected with warning pulse); (3) 5-minute ticket timeout on CALLED state with progress bar; (4) "Mulai Tanpa Antrean" fallback button when offline; (5) Consecutive failure tracking in QueueService.
+- **Juni 2026 (Fase 5 - Queue Session Linking RLS Fix)** ?: Fixed a critical logic and Row Level Security (RLS) bug on the website's /api/queue/link-session endpoint. Previously, the website failed to link sessions when users scanned the QR code because: 1) The ticket status was already changed to 'in_session' by the webhook, so the query ignored it. 2) The generic Supabase client lacked authentication cookies, causing RLS to block reading the ticket entirely. Solved by allowing 'in_session' status and using createServerClient with the user's cookies to authenticate the Supabase request.
+- **Juni 2026 (Fase 5 - Queue Session Linking FK Fix)** ?: Fixed a 500 Error when linking session via QR. The link-session API tried to update queue_tickets.session_id to the photobooth's sessionId, but the session row hasn't been synced to Supabase yet because the user is still taking photos. This caused a Foreign Key constraint violation. Fixed by removing the premature session_id update. The session is safely linked later by the session_completed webhook.
+- **Juni 2026 (Fase 6 - Auto-Call Queue Fix)** ?: Fixed a bug where a new queue ticket remained in 'waiting' status indefinitely if the booth was idle. Modified joinQueue logic in the Next.js website to automatically assign the 'called' status (and broadcast via SSE) if no other ticket is currently called or in session. This eliminates the need for manual admin operator intervention when the booth queue is empty.

@@ -7,7 +7,9 @@ import {
     SessionData,
     AppConfig,
     LUTFilter,
-    CameraDevice
+    CameraDevice,
+    QueueStatusResponse,
+    QueueTicket
 } from '@shared/types'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -47,7 +49,12 @@ const defaultConfig: AppConfig = {
     sharingMode: 'cloud', // Can be 'cloud' or 'local'
     cloudPortalUrl: '',
     cameraMode: 'mock', // Can be 'mock' or 'dslr'
-    selectedCameraId: undefined
+    selectedCameraId: undefined,
+    // Queue Integration
+    queueEnabled: false,
+    queueEventId: '',
+    queueWebhookSecret: 'sebooth-queue-webhook-2026',
+    queueApiUrl: 'https://www.sebooth.in'
 }
 
 import { apiHelper } from '../lib/apiHelper'
@@ -393,3 +400,56 @@ export const useFilterStore = create<FilterState>()(
         { name: 'sebooth-filters' }
     )
 )
+
+// ================================
+// Queue Store
+// ================================
+interface QueueState {
+    isPolling: boolean
+    isConnected: boolean
+    queueStatus: QueueStatusResponse | null
+    currentTicket: QueueTicket | null
+    connectionError: string | null
+    activeTicketNumber: number | null
+    activeTicketId: string | null
+
+    setPolling: (polling: boolean) => void
+    setConnected: (connected: boolean) => void
+    setQueueStatus: (status: QueueStatusResponse | null) => void
+    setCurrentTicket: (ticket: QueueTicket | null) => void
+    setConnectionError: (error: string | null) => void
+    setActiveTicket: (ticketNumber: number | null, ticketId: string | null) => void
+    reset: () => void
+}
+
+export const useQueueStore = create<QueueState>((set) => ({
+    isPolling: false,
+    isConnected: false,
+    queueStatus: null,
+    currentTicket: null,
+    connectionError: null,
+    activeTicketNumber: null,
+    activeTicketId: null,
+
+    setPolling: (polling) => set({ isPolling: polling }),
+    setConnected: (connected) => set({ isConnected: connected }),
+    setQueueStatus: (status) => set({
+        queueStatus: status,
+        currentTicket: status?.currentTicket || null
+    }),
+    setCurrentTicket: (ticket) => set({ currentTicket: ticket }),
+    setConnectionError: (error) => set({ connectionError: error }),
+    setActiveTicket: (ticketNumber, ticketId) => set({
+        activeTicketNumber: ticketNumber,
+        activeTicketId: ticketId
+    }),
+    reset: () => set({
+        isPolling: false,
+        isConnected: false,
+        queueStatus: null,
+        currentTicket: null,
+        connectionError: null,
+        activeTicketNumber: null,
+        activeTicketId: null
+    })
+}))
