@@ -2,17 +2,18 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useFrameStore, useSessionStore, useFilterStore, useAppConfig } from '../stores'
-import { PhotoSlot } from '@shared/types'
+import { PhotoSlot, QRSlot } from '@shared/types'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
 import styles from './OutputPage.module.css'
 import { supabase } from '../lib/supabase'
 import Lottie from 'lottie-react'
 import PA22Animation from '../assets/PA22.json'
+import QRCode from 'qrcode'
 
 function OutputPage(): JSX.Element {
     const navigate = useNavigate()
     const { frames, activeFrame } = useFrameStore()
-    const { photos, currentSession, setCompositePath, selectedFilter } = useSessionStore()
+    const { photos, currentSession, setCompositePath, selectedFilter, isMirrored } = useSessionStore()
     const { config } = useAppConfig()
 
     const sessionFrame = currentSession?.frameId
@@ -146,13 +147,21 @@ function OutputPage(): JSX.Element {
                         }
                     })
 
+                    const qrUrl = await getQRUrl()
+                    let qrCodeDataUrlForSave: string | undefined = undefined
+                    if (qrUrl && getQRSlots(sessionFrame).length > 0) {
+                        qrCodeDataUrlForSave = await QRCode.toDataURL(qrUrl, { margin: 1 })
+                    }
+
                     const saveResult = await window.api.system.saveSessionLocally({
                         sessionId,
                         stripDataUrl: compositeDataUrl || undefined,
                         gifDataUrl: gifDataUrl || undefined,
+                        qrCodeDataUrl: qrCodeDataUrlForSave,
                         photos: photosForSave,
                         videos: videosForSave,
                         overlay: { path: sessionFrame.overlayPath, filename: 'overlay.png' },
+                        mirrorOutput: isMirrored,
                         frameConfig: {
                             width: sessionFrame.canvasWidth,
                             height: sessionFrame.canvasHeight,
@@ -162,6 +171,12 @@ function OutputPage(): JSX.Element {
                                 x: s.x,
                                 y: s.y,
                                 rotation: s.rotation
+                            })),
+                            qrSlots: getQRSlots(sessionFrame).map(s => ({
+                                width: s.width,
+                                height: s.height,
+                                x: s.x,
+                                y: s.y
                             }))
                         }
                     })
@@ -327,7 +342,13 @@ function OutputPage(): JSX.Element {
                 }
                 gctx.fillStyle = '#ffffff'
                 gctx.fillRect(0, 0, gifCanvas.width, gifCanvas.height)
+                gctx.save()
+                if (isMirrored) {
+                    gctx.translate(gifCanvas.width, 0)
+                    gctx.scale(-1, 1)
+                }
                 gctx.drawImage(img, dx, dy, dw, dh)
+                gctx.restore()
                 framesBase64.push(gifCanvas.toDataURL('image/jpeg', 0.95))
             }
             if ((window as any).api.system.generateHqGif) {
@@ -339,6 +360,41 @@ function OutputPage(): JSX.Element {
         } catch (e) {
             console.error('GIF Gen Error', e)
         }
+    }
+
+    const getQRUrl = async (): Promise<string> => {
+        if (!currentSession) return ''
+        if (config.sharingMode === 'cloud') {
+            let portalBase = config.cloudPortalUrl
+            if (!portalBase) {
+                const ipRes = await (window as any).api.system.getLocalIp()
+                const localIp = (ipRes && ipRes.success && ipRes.data) ? ipRes.data : 'localhost'
+                portalBase = `http://${localIp}:3000`
+            }
+            portalBase = portalBase.replace(/\/$/, '')
+            return `${portalBase}/access/${currentSession.id}`
+        } else {
+            const ipRes = await (window as any).api.system.getLocalIp()
+            const localIp = (ipRes && ipRes.success && ipRes.data) ? ipRes.data : '127.0.0.1'
+            return `http://${localIp}:5050/gallery/${currentSession.id}`
+        }
+    }
+
+    const getQRSlots = (frame: any): QRSlot[] => {
+        if (frame.qrSlots && frame.qrSlots.length > 0) {
+            return frame.qrSlots
+        }
+        if (frame.qrSlot && frame.qrSlot.enabled) {
+            return [{
+                id: 'legacy-qr',
+                x: frame.qrSlot.x,
+                y: frame.qrSlot.y,
+                width: frame.qrSlot.width,
+                height: frame.qrSlot.height,
+                enabled: true
+            }]
+        }
+        return []
     }
 
     // Generate composite from photos using canvas
@@ -408,7 +464,12 @@ function OutputPage(): JSX.Element {
                     const panX = photo.panX || 0
                     const panY = photo.panY || 0
 
-                    ctx.translate(panX, panY)
+                    if (isMirrored) {
+                        ctx.scale(-1, 1)
+                        ctx.translate(-panX, panY)
+                    } else {
+                        ctx.translate(panX, panY)
+                    }
                     ctx.scale(scale, scale)
 
                     ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
@@ -446,6 +507,30 @@ function OutputPage(): JSX.Element {
 
             } catch (err) {
                 console.error('Failed to load frame overlay:', err)
+            }
+
+            // Draw QR code if enabled
+            const activeQrSlots = getQRSlots(sessionFrame)
+            if (activeQrSlots.length > 0) {
+                try {
+                    const qrUrl = await getQRUrl()
+                    if (qrUrl) {
+                        const qrDataUrl = await QRCode.toDataURL(qrUrl, { margin: 1 })
+                        const qrImg = await loadImage(qrDataUrl)
+                        for (const qrSlot of activeQrSlots) {
+                            if (!qrSlot.enabled) continue
+                            ctx.drawImage(
+                                qrImg,
+                                qrSlot.x,
+                                qrSlot.y,
+                                qrSlot.width,
+                                qrSlot.height
+                            )
+                        }
+                    }
+                } catch (qrErr) {
+                    console.error('Failed to draw QR code on composite:', qrErr)
+                }
             }
 
             const dataUrl = canvas.toDataURL('image/jpeg', 0.95)

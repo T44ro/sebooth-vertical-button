@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { useSessionStore, useFrameStore } from '../stores'
+import { useSessionStore, useFrameStore, useAppConfig } from '../stores'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
 import styles from './ReviewSession.module.css'
 
@@ -26,9 +26,12 @@ const ReviewSession: React.FC = () => {
         removePhoto,
         selectedFilter,
         setSessionFilter,
-        endSession
+        endSession,
+        isMirrored,
+        setIsMirrored
     } = useSessionStore()
     const { frames } = useFrameStore()
+    const { config } = useAppConfig()
     
     const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
     const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({})
@@ -42,6 +45,12 @@ const ReviewSession: React.FC = () => {
             navigate('/capture')
         }
     }, [currentSession, photos, navigate])
+
+    useEffect(() => {
+        if (config && config.mirrorOutput !== undefined) {
+            setIsMirrored(config.mirrorOutput)
+        }
+    }, [config, setIsMirrored])
 
     if (!currentSession) return null
 
@@ -261,7 +270,7 @@ const ReviewSession: React.FC = () => {
                                                 width: '100%',
                                                 height: '100%',
                                                 objectFit: 'cover',
-                                                transform: `scale(${photo.scale || 1})`,
+                                                transform: `scale(${photo.scale || 1}) scaleX(${isMirrored ? -1 : 1})`,
                                                 transformOrigin: 'center center',
                                                 ...filterStyle
                                             }}
@@ -324,6 +333,17 @@ const ReviewSession: React.FC = () => {
                                     </button>
                                 ))}
                             </div>
+                            <div className={styles.mirrorGroup}>
+                                <span>Mirror Output</span>
+                                <label className={styles.toggleSwitch}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isMirrored}
+                                        onChange={(e) => setIsMirrored(e.target.checked)}
+                                    />
+                                    <span className={styles.toggleSlider}></span>
+                                </label>
+                            </div>
 
                             <button className={styles.nextBtn} onClick={() => navigate('/output')}>
                                 Next Step ➔
@@ -366,7 +386,10 @@ const ReviewSession: React.FC = () => {
                                         <img 
                                             src={photo.imagePath} 
                                             alt={`Photo ${previewIndex + 1}`}
-                                            style={filterStyle}
+                                            style={{
+                                                ...filterStyle,
+                                                transform: `scaleX(${isMirrored ? -1 : 1})`
+                                            }}
                                         />
                                     </motion.div>
                                     

@@ -18,6 +18,12 @@ function App(): JSX.Element {
     const { config } = useAppConfig()
 
     useEffect(() => {
+        const orientationClass = config.appOrientation === 'portrait' ? 'app-portrait' : 'app-landscape'
+        document.body.classList.remove('app-portrait', 'app-landscape')
+        document.body.classList.add(orientationClass)
+    }, [config.appOrientation])
+
+    useEffect(() => {
         const initCamera = async () => {
             try {
                 const windowApi = (window as any).api;

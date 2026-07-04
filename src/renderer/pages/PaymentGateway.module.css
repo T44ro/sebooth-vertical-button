@@ -306,3 +306,42 @@
     font-size: var(--font-size-sm);
     cursor: pointer;
 }
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+}
+
+:global(body.app-portrait) .content {
+    padding: 16px !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+:global(body.app-portrait) .header {
+    margin-bottom: 16px !important;
+}
+
+:global(body.app-portrait) .mainContent {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    overflow-y: auto !important;
+    flex: 1 !important;
+}
+
+:global(body.app-portrait) .priceSection,
+:global(body.app-portrait) .qrSection {
+    padding: 16px !important;
+}
+
+:global(body.app-portrait) .qrImage {
+    max-width: 200px !important;
+}
+
+:global(body.app-portrait) .qrWrapper svg {
+    width: 180px !important;
+    height: 180px !important;
+}

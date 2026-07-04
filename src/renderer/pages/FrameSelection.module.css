@@ -165,3 +165,20 @@
     color: var(--color-text-secondary);
     font-weight: 700;
 }
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+}
+
+:global(body.app-portrait) .frameGrid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px !important;
+    padding: 16px !important;
+}
+
+:global(body.app-portrait) .header h1 {
+    font-size: 20px !important;
+}

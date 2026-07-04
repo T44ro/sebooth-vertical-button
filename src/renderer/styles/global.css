@@ -309,7 +309,230 @@ input::placeholder {
   70%  { transform: scale(1.05); }
   100% { transform: scale(1);    opacity: 1; }
 }
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background-color: var(--clay-cream);
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+h1 { font-size: var(--font-size-5xl); }
+h2 { font-size: var(--font-size-4xl); }
+h3 { font-size: var(--font-size-3xl); }
+h4 { font-size: var(--font-size-2xl); }
+h5 { font-size: var(--font-size-xl); }
+h6 { font-size: var(--font-size-lg); }
+
+p {
+  color: var(--color-text-secondary);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Buttons base */
+button {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+}
+
+/* Forms */
+input, textarea, select {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-tertiary);
+  border: 2px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: var(--clay-shadow-sm);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--clay-blue);
+  box-shadow: var(--clay-shadow-blue);
+}
+
+input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+
+/* ==========================================
+   UTILITY CLASSES — Colorful Clay v2
+   ========================================== */
+
+/* White floating card (default) */
+.clay-panel {
+  background: #FFFFFF;
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--clay-shadow);
+  transition: transform var(--transition-bouncy), box-shadow var(--transition-fast);
+}
+
+.clay-panel:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--clay-shadow-lg);
+}
+
+/* White solid pill button */
+.clay-btn {
+  background: #FFFFFF;
+  border-radius: var(--radius-full);
+  box-shadow: var(--clay-shadow);
+  color: var(--color-text-main);
+  padding: var(--spacing-md) var(--spacing-xl);
+  font-weight: 800;
+  transition: transform var(--transition-bouncy), box-shadow var(--transition-fast);
+  border: none;
+  cursor: pointer;
+}
+
+.clay-btn:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: var(--clay-shadow-lg);
+}
+
+/* Accent pill button — blue */
+.clay-btn-accent {
+  background: var(--clay-blue);
+  color: #FFFFFF;
+  border-radius: var(--radius-full);
+  box-shadow: var(--clay-shadow-blue);
+  padding: var(--spacing-md) var(--spacing-xl);
+  font-weight: 800;
+  transition: transform var(--transition-bouncy), box-shadow var(--transition-fast);
+  border: none;
+  cursor: pointer;
+}
+
+.clay-btn-accent:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+
+.clay-btn:active, .clay-btn-accent:active {
+  transform: scale(0.92) translateY(2px);
+  box-shadow: var(--clay-shadow-sm);
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, var(--clay-blue) 0%, var(--clay-purple) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ==========================================
+   ANIMATIONS
+   ========================================== */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes countdown-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06) translateY(-4px); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+}
+
+@keyframes soft-bounce-in {
+  0%   { transform: scale(0.85); opacity: 0; }
+  70%  { transform: scale(1.05); }
+  100% { transform: scale(1);    opacity: 1; }
+}
 
 .animate-pulse  { animation: pulse 2s ease-in-out infinite; }
 .animate-spin   { animation: spin 1s linear infinite; }
 .animate-float  { animation: float 3s ease-in-out infinite; }
+
+/* ===================================================
+   PORTRAIT (VERTICAL) MODE STYLES
+   =================================================== */
+body.app-portrait {
+  background-color: #0b0f19 !important; /* Dark letterbox background */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+body.app-portrait #root {
+  width: calc(100vh * 9 / 16) !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  position: relative !important;
+  box-shadow: 0 0 60px rgba(0,0,0,0.6) !important;
+  overflow: hidden !important;
+  margin: 0 auto !important;
+  background-color: var(--clay-cream) !important;
+}
+
+

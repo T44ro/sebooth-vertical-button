@@ -47,6 +47,15 @@ export interface PhotoSlot {
     duplicateOfSlotId?: string  // If set, this slot uses the same photo as the referenced slot
 }
 
+export interface QRSlot {
+    id: string
+    x: number
+    y: number
+    width: number
+    height: number
+    enabled: boolean
+}
+
 export interface FrameConfig {
     id: string
     name: string
@@ -54,6 +63,8 @@ export interface FrameConfig {
     slots: PhotoSlot[]
     canvasWidth: number
     canvasHeight: number
+    qrSlot?: QRSlot
+    qrSlots?: QRSlot[]
 }
 
 // Session Types
@@ -130,6 +141,10 @@ export interface AppConfig {
     queueEventId: string // UUID of the active queue event
     queueWebhookSecret: string // Shared secret for webhook auth
     queueApiUrl: string // Base URL of the website (e.g. https://www.sebooth.in)
+
+    // Layout Settings
+    appOrientation: 'landscape' | 'portrait' // Screen/App layout orientation
+    mirrorOutput: boolean // Toggle to mirror output by default
 }
 
 export interface LUTFilter {

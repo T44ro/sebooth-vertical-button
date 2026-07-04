@@ -54,7 +54,9 @@ const defaultConfig: AppConfig = {
     queueEnabled: false,
     queueEventId: '',
     queueWebhookSecret: 'sebooth-queue-webhook-2026',
-    queueApiUrl: 'https://www.sebooth.in'
+    queueApiUrl: 'https://www.sebooth.in',
+    appOrientation: 'landscape',
+    mirrorOutput: false
 }
 
 import { apiHelper } from '../lib/apiHelper'
@@ -100,6 +102,9 @@ interface FrameState {
     addSlot: (frameId: string, slot?: Partial<PhotoSlot>) => void
     updateSlot: (frameId: string, slotId: string, updates: Partial<PhotoSlot>) => void
     deleteSlot: (frameId: string, slotId: string) => void
+    addQRSlot: (frameId: string, slot?: Partial<QRSlot>) => void
+    updateQRSlot: (frameId: string, slotId: string, updates: Partial<QRSlot>) => void
+    deleteQRSlot: (frameId: string, slotId: string) => void
     // Undo/Redo actions
     undo: () => void
     redo: () => void
@@ -199,6 +204,59 @@ export const useFrameStore = create<FrameState>()(
                     )
                 })),
 
+                addQRSlot: (frameId, slot) => {
+                    const newSlot = {
+                        id: uuidv4(),
+                        x: slot?.x ?? 50,
+                        y: slot?.y ?? 50,
+                        width: slot?.width ?? 200,
+                        height: slot?.height ?? 200,
+                        enabled: slot?.enabled ?? true
+                    }
+
+                    set((state) => ({
+                        ...saveToHistory(),
+                        frames: state.frames.map(f =>
+                            f.id === frameId
+                                ? { ...f, qrSlots: [...(f.qrSlots || []), newSlot] }
+                                : f
+                        ),
+                        activeFrame: state.activeFrame?.id === frameId
+                            ? { ...state.activeFrame, qrSlots: [...(state.activeFrame.qrSlots || []), newSlot] }
+                            : state.activeFrame
+                    }))
+                },
+
+                updateQRSlot: (frameId, slotId, updates) => set((state) => ({
+                    ...saveToHistory(),
+                    frames: state.frames.map(f =>
+                        f.id === frameId
+                            ? {
+                                ...f,
+                                qrSlots: (f.qrSlots || []).map(s => s.id === slotId ? { ...s, ...updates } : s)
+                            }
+                            : f
+                    ),
+                    activeFrame: state.activeFrame?.id === frameId
+                        ? {
+                            ...state.activeFrame,
+                            qrSlots: (state.activeFrame.qrSlots || []).map(s => s.id === slotId ? { ...s, ...updates } : s)
+                        }
+                        : state.activeFrame
+                })),
+
+                deleteQRSlot: (frameId, slotId) => set((state) => ({
+                    ...saveToHistory(),
+                    frames: state.frames.map(f =>
+                        f.id === frameId
+                            ? { ...f, qrSlots: (f.qrSlots || []).filter(s => s.id !== slotId) }
+                            : f
+                    ),
+                    activeFrame: state.activeFrame?.id === frameId
+                        ? { ...state.activeFrame, qrSlots: (state.activeFrame.qrSlots || []).filter(s => s.id !== slotId) }
+                        : state.activeFrame
+                })),
+
                 // Undo: restore previous state
                 undo: () => set((state) => {
                     if (state.history.length === 0) return state
@@ -253,6 +311,8 @@ interface SessionState {
     setCloudSessionId: (id: string) => void
     selectedFilter: string
     setSessionFilter: (filterId: string) => void
+    isMirrored: boolean
+    setIsMirrored: (mirror: boolean) => void
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -333,6 +393,12 @@ export const useSessionStore = create<SessionState>((set) => ({
 
     setSessionFilter: (filterId) => set({
         selectedFilter: filterId
+    }),
+
+    isMirrored: false,
+
+    setIsMirrored: (mirror) => set({
+        isMirrored: mirror
     })
 }))
 

@@ -35,7 +35,9 @@ export class ConfigService {
         queueEnabled: false,
         queueEventId: '',
         queueWebhookSecret: 'sebooth-queue-webhook-2026',
-        queueApiUrl: 'https://www.sebooth.in'
+        queueApiUrl: 'https://www.sebooth.in',
+        appOrientation: 'landscape',
+        mirrorOutput: false
     }
 
     constructor() {

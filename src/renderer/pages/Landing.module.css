@@ -14,10 +14,60 @@
     font-family: var(--font-family);
 }
 
+.container:has(.liveCameraBackground) {
+    background: none !important;
+    background-color: transparent !important;
+    background-image: none !important;
+}
+
+/* ── LIVE CAMERA BACKGROUND ── */
+.liveCameraBackground {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    object-fit: cover;
+    z-index: 1 !important;
+    display: block !important;
+    background: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+}
+
+/* Overlay untuk membuat content terlihat di atas live camera */
+.container::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.container:has(.liveCameraBackground)::before {
+    opacity: 0.4;
+    z-index: 2;
+}
+
+.container:has(.liveCameraBackground) .illustrationWrap {
+    display: none;
+}
+
 /* ── TOP NAVBAR ── */
 .navbar {
     position: relative;
-    z-index: 50;
+    z-index: 99999;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -26,13 +76,19 @@
     flex-shrink: 0;
 }
 
+.navLeft {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
 .navLogo {
     display: flex;
     align-items: center;
     gap: 10px;
 }
 
-.navLogoIcon { 
+.navLogoIcon {
     width: 42px;
     height: 42px;
     object-fit: contain;
@@ -65,7 +121,7 @@
     font-weight: 700;
     color: #1A1A2E;
     background: #FFFFFF;
-    border: 1px solid rgba(0,0,0,0.05);
+    border: 1px solid rgba(0, 0, 0, 0.05);
     border-radius: var(--radius-full);
     box-shadow: var(--clay-shadow-sm);
     cursor: pointer;
@@ -73,12 +129,12 @@
     white-space: nowrap;
 }
 
-.cameraPickerBtn:hover { 
-    transform: translateY(-4px) scale(1.02); 
-    box-shadow: var(--clay-shadow); 
+.cameraPickerBtn:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: var(--clay-shadow);
 }
 
-.cameraPickerBtn:active { 
+.cameraPickerBtn:active {
     transform: scale(0.92);
     filter: brightness(0.95);
 }
@@ -216,8 +272,8 @@
 
     /* Liquid Glass Effect */
     padding: 24px 48px;
-    background: rgba(255, 255, 255, 0.4);
-    backdrop-filter: blur(12px) saturate(140%);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px) saturate(140%);
     -webkit-backdrop-filter: blur(12px) saturate(140%);
     border-radius: 40px;
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -269,8 +325,8 @@
     color: #FFFFFF;
 
     /* Liquid Glass Base */
-    background: rgba(132, 132, 144, 0.7);
-    backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(132, 132, 144, 0.3);
+    backdrop-filter: blur(10px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
 
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -529,6 +585,45 @@
     z-index: 50;
 }
 
+/* ── LIVE CAMERA TOGGLE BUTTON ── */
+.liveCameraToggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border: 1.5px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color: #FFFFFF;
+    flex-shrink: 0;
+}
+
+.liveCameraToggle:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+
+.liveCameraToggle:active {
+    transform: scale(0.92);
+}
+
+.liveCameraToggle.active {
+    background: rgba(62, 193, 138, 0.5);
+    border-color: var(--clay-green);
+    box-shadow: 0 0 16px rgba(62, 193, 138, 0.4);
+}
+
+.toggleIcon {
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* Animations */
 @keyframes spin {
     to {
@@ -550,4 +645,96 @@
     75% {
         transform: translateX(8px);
     }
+}
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+}
+
+:global(body.app-portrait) .navbar {
+    padding: 12px 16px !important;
+    gap: 8px !important;
+}
+
+:global(body.app-portrait) .navLeft {
+    gap: 8px !important;
+}
+
+:global(body.app-portrait) .navLogoText {
+    font-size: 18px !important;
+}
+
+:global(body.app-portrait) .navLogoIcon {
+    width: 32px !important;
+    height: 32px !important;
+}
+
+:global(body.app-portrait) .liveCameraToggle {
+    width: 36px !important;
+    height: 36px !important;
+}
+
+:global(body.app-portrait) .navRight {
+    gap: 8px !important;
+}
+
+:global(body.app-portrait) .cameraPickerBtn {
+    padding: 8px 14px !important;
+    font-size: 12px !important;
+    max-width: 160px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+:global(body.app-portrait) .cameraPickerBtn span:nth-child(2) {
+    max-width: 80px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+:global(body.app-portrait) .adminTrigger {
+    width: 32px !important;
+    height: 32px !important;
+}
+
+:global(body.app-portrait) .headline {
+    font-size: clamp(20px, 3.5vh, 32px) !important;
+    padding: 16px 20px !important;
+    max-width: 90% !important;
+    margin-bottom: 24px !important;
+}
+
+:global(body.app-portrait) .illustrationWrap {
+    margin-top: -60px !important;
+    max-height: 40vh !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+:global(body.app-portrait) .illustration {
+    transform: scale(1.0) !important;
+    max-height: 35vh !important;
+}
+
+:global(body.app-portrait) .ctaPrimary {
+    padding: 16px 48px !important;
+    font-size: 20px !important;
+    top: 55% !important;
+}
+
+:global(body.app-portrait) .liveCameraBackground,
+:global(body.app-portrait) .container::before,
+:global(body.app-portrait) .modalOverlay {
+    position: absolute !important;
+    width: 100% !important;
+    height: 100% !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
 }

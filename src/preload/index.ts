@@ -111,13 +111,16 @@ const api = {
             sessionId: string
             stripDataUrl?: string
             gifDataUrl?: string
+            qrCodeDataUrl?: string
             photos: { path: string; filename: string }[]
             videos: { path: string; filename: string }[]
             overlay?: { path: string; filename: string }
+            mirrorOutput?: boolean
             frameConfig?: {
                 width: number
                 height: number
                 slots: { width: number; height: number; x: number; y: number; rotation?: number }[]
+                qrSlots?: { width: number; height: number; x: number; y: number }[]
             }
         }): Promise<APIResponse<{ path: string; filename: string; mimeType: string }[]>> =>
             ipcRenderer.invoke('system:save-session-locally', params),

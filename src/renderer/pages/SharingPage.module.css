@@ -139,3 +139,45 @@
 .printButton:hover { transform: translateY(-6px) scale(1.04); box-shadow: 0 16px 40px rgba(62, 193, 138, 0.55); }
 .printButton:hover .btnIcon { transform: scale(1.2) rotate(5deg); transition: transform 0.3s var(--transition-bouncy); }
 .printButton:active { transform: scale(0.92) translateY(4px); box-shadow: var(--clay-shadow-sm); }
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+}
+
+:global(body.app-portrait) .title {
+    font-size: 32px !important;
+}
+
+:global(body.app-portrait) .subtitle {
+    font-size: var(--font-size-base) !important;
+    margin-bottom: var(--spacing-lg) !important;
+    padding: 0 16px !important;
+}
+
+:global(body.app-portrait) .qrCode {
+    width: 260px !important;
+    height: 260px !important;
+    padding: 16px !important;
+}
+
+:global(body.app-portrait) .bottomControls {
+    position: relative !important;
+    bottom: auto !important;
+    margin-top: 24px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    gap: 12px !important;
+    padding: 0 16px !important;
+    width: 100% !important;
+}
+
+:global(body.app-portrait) .homeButton,
+:global(body.app-portrait) .printButton {
+    padding: var(--spacing-md) var(--spacing-lg) !important;
+    font-size: 16px !important;
+}
+

@@ -795,3 +795,34 @@
 .retryButton:active { transform: scale(0.93); box-shadow: var(--clay-shadow-sm); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+    flex-direction: column !important;
+}
+
+:global(body.app-portrait) .galleryToggle {
+    width: 120px !important;
+    height: 120px !important;
+}
+
+:global(body.app-portrait) .galleryPanel {
+    width: 280px !important;
+    max-height: 55vh !important;
+}
+
+:global(body.app-portrait) .countdownNumber {
+    font-size: 120px !important;
+}
+
+:global(body.app-portrait) .reviewPopupOverlay {
+    position: absolute !important;
+}
+
+:global(body.app-portrait) .floatingGallery {
+    bottom: 120px !important;
+    right: 16px !important;
+}

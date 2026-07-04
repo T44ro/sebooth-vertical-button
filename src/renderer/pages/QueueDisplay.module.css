@@ -505,3 +505,28 @@
     color: rgba(255, 255, 255, 0.15);
     z-index: 1;
 }
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+}
+
+:global(body.app-portrait) .connectionBanner,
+:global(body.app-portrait) .qrOverlay,
+:global(body.app-portrait) .adminTrigger,
+:global(body.app-portrait) .modalOverlay,
+:global(body.app-portrait) .version {
+    position: absolute !important;
+}
+
+:global(body.app-portrait) .ticketNumber {
+    font-size: 80px !important;
+}
+
+:global(body.app-portrait) .startButton {
+    padding: 16px 32px !important;
+    font-size: 18px !important;
+}
+

@@ -13,7 +13,7 @@ type DragMode = 'move' | 'resize-se' | 'resize-sw' | 'resize-ne' | 'resize-nw' |
 
 function AdminDashboard(): JSX.Element {
     const navigate = useNavigate()
-    const { frames, addFrame, updateFrame, deleteFrame, addSlot, updateSlot, deleteSlot, setActiveFrame, undo, redo } = useFrameStore()
+    const { frames, addFrame, updateFrame, deleteFrame, addSlot, updateSlot, deleteSlot, addQRSlot, updateQRSlot, deleteQRSlot, setActiveFrame, undo, redo } = useFrameStore()
     const { config, updateConfig } = useAppConfig()
     const { filters, addFilter, removeFilter } = useFilterStore()
     const { endSession } = useSessionStore()
@@ -136,6 +136,24 @@ function AdminDashboard(): JSX.Element {
 
     const selectedFrame = frames.find(f => f.id === selectedFrameId)
 
+    const getQRSlots = useCallback((frame: any): any[] => {
+        if (!frame) return []
+        if (frame.qrSlots && frame.qrSlots.length > 0) {
+            return frame.qrSlots
+        }
+        if (frame.qrSlot && frame.qrSlot.enabled) {
+            return [{
+                id: 'legacy-qr',
+                x: frame.qrSlot.x,
+                y: frame.qrSlot.y,
+                width: frame.qrSlot.width,
+                height: frame.qrSlot.height,
+                enabled: true
+            }]
+        }
+        return []
+    }, [])
+
     // Handle mouse move on canvas for dragging and resizing
     const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
         if (!draggedSlotId || !selectedFrame || !canvasRef.current || !dragMode) return
@@ -146,6 +164,60 @@ function AdminDashboard(): JSX.Element {
 
         const deltaX = (e.clientX - dragStart.x) * scaleX
         const deltaY = (e.clientY - dragStart.y) * scaleY
+
+        const activeQrSlots = getQRSlots(selectedFrame)
+        const qrSlot = activeQrSlots.find(s => s.id === draggedSlotId)
+
+        if (qrSlot) {
+            const updateQRSlotData = (updates: any) => {
+                if (qrSlot.id === 'legacy-qr') {
+                    updateFrame(selectedFrame.id, {
+                        qrSlot: {
+                            ...selectedFrame.qrSlot!,
+                            ...updates
+                        }
+                    })
+                } else {
+                    updateQRSlot(selectedFrame.id, qrSlot.id, updates)
+                }
+            }
+
+            if (dragMode === 'move') {
+                updateQRSlotData({
+                    x: Math.max(0, Math.min(dragStart.slotX + deltaX, selectedFrame.canvasWidth - 50)),
+                    y: Math.max(0, Math.min(dragStart.slotY + deltaY, selectedFrame.canvasHeight - 50))
+                })
+            } else if (dragMode === 'resize-se') {
+                updateQRSlotData({
+                    width: Math.max(50, dragStart.slotW + deltaX),
+                    height: Math.max(50, dragStart.slotH + deltaY)
+                })
+            } else if (dragMode === 'resize-sw') {
+                const newWidth = Math.max(50, dragStart.slotW - deltaX)
+                updateQRSlotData({
+                    x: dragStart.slotX + dragStart.slotW - newWidth,
+                    width: newWidth,
+                    height: Math.max(50, dragStart.slotH + deltaY)
+                })
+            } else if (dragMode === 'resize-ne') {
+                const newHeight = Math.max(50, dragStart.slotH - deltaY)
+                updateQRSlotData({
+                    y: dragStart.slotY + dragStart.slotH - newHeight,
+                    width: Math.max(50, dragStart.slotW + deltaX),
+                    height: newHeight
+                })
+            } else if (dragMode === 'resize-nw') {
+                const newWidth = Math.max(50, dragStart.slotW - deltaX)
+                const newHeight = Math.max(50, dragStart.slotH - deltaY)
+                updateQRSlotData({
+                    x: dragStart.slotX + dragStart.slotW - newWidth,
+                    y: dragStart.slotY + dragStart.slotH - newHeight,
+                    width: newWidth,
+                    height: newHeight
+                })
+            }
+            return
+        }
 
         if (dragMode === 'move') {
             updateSlot(selectedFrame.id, draggedSlotId, {
@@ -194,7 +266,7 @@ function AdminDashboard(): JSX.Element {
                 })
             }
         }
-    }, [draggedSlotId, selectedFrame, dragMode, dragStart, updateSlot])
+    }, [draggedSlotId, selectedFrame, dragMode, dragStart, updateSlot, updateFrame])
 
     // Handle canvas wheel for zoom
     useEffect(() => {
@@ -342,6 +414,30 @@ function AdminDashboard(): JSX.Element {
         setDragMode(`resize-${corner}`)
         setSelectedSlotId(slotId)
     }, [selectedFrame])
+
+    // Handle QR slot mouse down - start moving
+    const handleQRSlotMouseDown = useCallback((slotId: string, e: React.MouseEvent) => {
+        e.stopPropagation()
+        const qr = getQRSlots(selectedFrame).find(s => s.id === slotId)
+        if (!qr) return
+
+        setDragStart({ x: e.clientX, y: e.clientY, slotX: qr.x, slotY: qr.y, slotW: qr.width, slotH: qr.height })
+        setDraggedSlotId(slotId)
+        setDragMode('move')
+        setSelectedSlotId(slotId)
+    }, [selectedFrame, getQRSlots])
+
+    // Handle QR resize handle mouse down
+    const handleQRResizeMouseDown = useCallback((slotId: string, corner: 'se' | 'sw' | 'ne' | 'nw', e: React.MouseEvent) => {
+        e.stopPropagation()
+        const qr = getQRSlots(selectedFrame).find(s => s.id === slotId)
+        if (!qr) return
+
+        setDragStart({ x: e.clientX, y: e.clientY, slotX: qr.x, slotY: qr.y, slotW: qr.width, slotH: qr.height })
+        setDraggedSlotId(slotId)
+        setDragMode(`resize-${corner}`)
+        setSelectedSlotId(slotId)
+    }, [selectedFrame, getQRSlots])
 
     // Handle frame upload
     const handleFrameUpload = async (): Promise<void> => {
@@ -681,6 +777,59 @@ function AdminDashboard(): JSX.Element {
                                                     />
                                                 </div>
                                             ))}
+
+                                            {getQRSlots(selectedFrame).map((slot, index) => {
+                                                if (!slot.enabled) return null
+                                                const slotLabel = slot.id === 'legacy-qr' ? 'QR Code' : `QR ${index + 1}`
+                                                return (
+                                                    <div
+                                                        key={slot.id}
+                                                        className={`${styles.slot} ${styles.qrSlot} ${draggedSlotId === slot.id ? styles.dragging : ''} ${selectedSlotId === slot.id ? styles.selected : ''}`}
+                                                        style={{
+                                                            left: `${(slot.x / selectedFrame.canvasWidth) * 100}%`,
+                                                            top: `${(slot.y / selectedFrame.canvasHeight) * 100}%`,
+                                                            width: `${(slot.width / selectedFrame.canvasWidth) * 100}%`,
+                                                            height: `${(slot.height / selectedFrame.canvasHeight) * 100}%`,
+                                                            cursor: dragMode === 'move' && draggedSlotId === slot.id ? 'grabbing' : 'grab'
+                                                        }}
+                                                        onMouseDown={(e) => handleQRSlotMouseDown(slot.id, e)}
+                                                    >
+                                                        <span className={styles.slotNumber} style={{ fontSize: '14px', color: '#3b82f6' }}>{slotLabel}</span>
+                                                        
+                                                        {slot.id !== 'legacy-qr' && (
+                                                            <button
+                                                                className={styles.deleteSlotButton}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    deleteQRSlot(selectedFrame.id, slot.id)
+                                                                    if (selectedSlotId === slot.id) setSelectedSlotId(null)
+                                                                }}
+                                                                title="Delete this QR slot"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        )}
+
+                                                        {/* Resize handles at corners */}
+                                                        <div
+                                                            className={`${styles.resizeHandle} ${styles.handleNW}`}
+                                                            onMouseDown={(e) => handleQRResizeMouseDown(slot.id, 'nw', e)}
+                                                        />
+                                                        <div
+                                                            className={`${styles.resizeHandle} ${styles.handleNE}`}
+                                                            onMouseDown={(e) => handleQRResizeMouseDown(slot.id, 'ne', e)}
+                                                        />
+                                                        <div
+                                                            className={`${styles.resizeHandle} ${styles.handleSW}`}
+                                                            onMouseDown={(e) => handleQRResizeMouseDown(slot.id, 'sw', e)}
+                                                        />
+                                                        <div
+                                                            className={`${styles.resizeHandle} ${styles.handleSE}`}
+                                                            onMouseDown={(e) => handleQRResizeMouseDown(slot.id, 'se', e)}
+                                                        />
+                                                    </div>
+                                                )
+                                            })}
                                         </div>
                                     </div>
                                 </>
@@ -699,6 +848,139 @@ function AdminDashboard(): JSX.Element {
                                     <span className={styles.slotCount}>{selectedFrame.slots.length} slots</span>
                                 </div>
                                 <div className={styles.slotListSidebar}>
+                                    {/* QR Code Box settings */}
+                                    <div className={styles.qrSlotSection}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <h4 style={{ margin: 0, fontSize: '14px', color: 'white' }}>🔗 QR Code Slots</h4>
+                                            <button 
+                                                className={styles.addButton}
+                                                style={{ padding: '2px 8px', fontSize: '12px' }}
+                                                onClick={() => addQRSlot(selectedFrame.id)}
+                                            >
+                                                + Add QR Slot
+                                            </button>
+                                        </div>
+
+                                        {getQRSlots(selectedFrame).map((slot, index) => {
+                                            const slotLabel = slot.id === 'legacy-qr' ? 'QR Code (Legacy)' : `QR Slot ${index + 1}`
+                                            return (
+                                                <div
+                                                    key={slot.id}
+                                                    className={`${styles.slotItemSidebar} ${selectedSlotId === slot.id ? styles.expanded : ''}`}
+                                                    onClick={() => setSelectedSlotId(selectedSlotId === slot.id ? null : slot.id)}
+                                                    style={{ marginTop: '5px' }}
+                                                >
+                                                    <div className={styles.slotItemHeader}>
+                                                        <span className={styles.slotIcon}>🔗</span>
+                                                        <span className={styles.slotLabel} style={{ color: '#3b82f6' }}>{slotLabel}</span>
+                                                        <span className={styles.slotDimensions}>
+                                                            {Math.round(slot.width)}×{Math.round(slot.height)}
+                                                        </span>
+                                                    </div>
+                                                    {selectedSlotId === slot.id && (
+                                                        <div className={styles.slotDetails} onClick={(e) => e.stopPropagation()}>
+                                                            {slot.id === 'legacy-qr' && (
+                                                                <label className={styles.qrToggleLabel} style={{ marginBottom: '10px', marginTop: '5px' }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={slot.enabled}
+                                                                        onChange={(e) => {
+                                                                            updateFrame(selectedFrame.id, {
+                                                                                qrSlot: {
+                                                                                    ...selectedFrame.qrSlot!,
+                                                                                    enabled: e.target.checked
+                                                                                }
+                                                                            })
+                                                                        }}
+                                                                    />
+                                                                    <span>Enable QR Code</span>
+                                                                </label>
+                                                            )}
+                                                            <div className={styles.slotPropsGrid}>
+                                                                <label>
+                                                                    X
+                                                                    <input
+                                                                        type="number"
+                                                                        value={Math.round(slot.x)}
+                                                                        onChange={(e) => {
+                                                                            const val = parseInt(e.target.value) || 0
+                                                                            if (slot.id === 'legacy-qr') {
+                                                                                updateFrame(selectedFrame.id, { qrSlot: { ...selectedFrame.qrSlot!, x: val } })
+                                                                            } else {
+                                                                                updateQRSlot(selectedFrame.id, slot.id, { x: val })
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </label>
+                                                                <label>
+                                                                    Y
+                                                                    <input
+                                                                        type="number"
+                                                                        value={Math.round(slot.y)}
+                                                                        onChange={(e) => {
+                                                                            const val = parseInt(e.target.value) || 0
+                                                                            if (slot.id === 'legacy-qr') {
+                                                                                updateFrame(selectedFrame.id, { qrSlot: { ...selectedFrame.qrSlot!, y: val } })
+                                                                            } else {
+                                                                                updateQRSlot(selectedFrame.id, slot.id, { y: val })
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </label>
+                                                                <label>
+                                                                    Width
+                                                                    <input
+                                                                        type="number"
+                                                                        value={Math.round(slot.width)}
+                                                                        onChange={(e) => {
+                                                                            const val = parseInt(e.target.value) || 50
+                                                                            if (slot.id === 'legacy-qr') {
+                                                                                updateFrame(selectedFrame.id, { qrSlot: { ...selectedFrame.qrSlot!, width: val } })
+                                                                            } else {
+                                                                                updateQRSlot(selectedFrame.id, slot.id, { width: val })
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </label>
+                                                                <label>
+                                                                    Height
+                                                                    <input
+                                                                        type="number"
+                                                                        value={Math.round(slot.height)}
+                                                                        onChange={(e) => {
+                                                                            const val = parseInt(e.target.value) || 50
+                                                                            if (slot.id === 'legacy-qr') {
+                                                                                updateFrame(selectedFrame.id, { qrSlot: { ...selectedFrame.qrSlot!, height: val } })
+                                                                            } else {
+                                                                                updateQRSlot(selectedFrame.id, slot.id, { height: val })
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </label>
+                                                            </div>
+                                                            {slot.id !== 'legacy-qr' && (
+                                                                <button
+                                                                    className={styles.deleteSlotBtn}
+                                                                    onClick={() => {
+                                                                        deleteQRSlot(selectedFrame.id, slot.id)
+                                                                        setSelectedSlotId(null)
+                                                                    }}
+                                                                >
+                                                                    Delete QR Slot
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                        {getQRSlots(selectedFrame).length === 0 && (
+                                            <p style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', margin: '10px 0 0 0', textAlign: 'center' }}>
+                                                No QR Code boxes on this frame layout.
+                                            </p>
+                                        )}
+                                    </div>
+
                                     {selectedFrame.slots.map((slot, index) => (
                                         <div
                                             key={slot.id}
@@ -810,6 +1092,53 @@ function AdminDashboard(): JSX.Element {
                 {
                     activeTab === 'timers' && (
                         <div className={styles.timersTab}>
+                            <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                                <h3>📐 App Layout Orientation</h3>
+                                <p>Set the display layout mode for the photobooth app screen</p>
+                                <div style={{ display: 'flex', gap: '24px', marginTop: '16px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 700, color: 'white' }}>
+                                        <input
+                                            type="radio"
+                                            name="appOrientation"
+                                            value="landscape"
+                                            checked={config.appOrientation === 'landscape' || !config.appOrientation}
+                                            onChange={() => updateConfig({ appOrientation: 'landscape' })}
+                                            style={{ width: '20px', height: '20px', accentColor: 'var(--clay-blue)' }}
+                                        />
+                                        <span>🖥️ Landscape (Horizontal)</span>
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 700, color: 'white' }}>
+                                        <input
+                                            type="radio"
+                                            name="appOrientation"
+                                            value="portrait"
+                                            checked={config.appOrientation === 'portrait'}
+                                            onChange={() => updateConfig({ appOrientation: 'portrait' })}
+                                            style={{ width: '20px', height: '20px', accentColor: 'var(--clay-blue)' }}
+                                        />
+                                        <span>📱 Portrait (Vertical)</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                                <h3>🔮 Auto Mirror Output</h3>
+                                <p>Set default mirror mode (flop horizontally) for all photo and video outputs</p>
+                                <div className={styles.timerToggle}>
+                                    <label className={styles.toggleSwitch}>
+                                        <input
+                                            type="checkbox"
+                                            checked={config.mirrorOutput || false}
+                                            onChange={(e) => updateConfig({ mirrorOutput: e.target.checked })}
+                                        />
+                                        <span className={styles.toggleSlider}></span>
+                                    </label>
+                                    <span className={styles.toggleLabel}>
+                                        {config.mirrorOutput ? 'Mirror Output Enabled' : 'Mirror Output Disabled'}
+                                    </span>
+                                </div>
+                            </div>
+
                             <div className={styles.timerCard}>
                                 <h3>🎚️ Enable Countdown Timer</h3>
                                 <p>Toggle the countdown timer during photo capture sessions</p>

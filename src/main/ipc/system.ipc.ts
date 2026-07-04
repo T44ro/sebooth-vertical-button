@@ -2,6 +2,7 @@ import { IpcMain, dialog, app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, rmSync, renameSync, readdirSync } from 'fs'
 import { APIResponse } from '@shared/types'
+import sharp from 'sharp'
 // @ts-ignore - Ignore missing types for fluent-ffmpeg to prevent build failures
 import ffmpeg from 'fluent-ffmpeg'
 import ffmpegPath from '@ffmpeg-installer/ffmpeg'
@@ -225,13 +226,16 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
         sessionId: string
         stripDataUrl?: string
         gifDataUrl?: string
+        qrCodeDataUrl?: string
         photos: { path: string; filename: string }[]
         videos: { path: string; filename: string }[]
         overlay?: { path: string; filename: string }
+        mirrorOutput?: boolean
         frameConfig?: {
             width: number
             height: number
             slots: { width: number; height: number; x: number; y: number; rotation?: number }[]
+            qrSlots?: { width: number; height: number; x: number; y: number }[]
         }
     }): Promise<APIResponse<{ path: string; filename: string; mimeType: string }[]>> => {
         try {
@@ -242,6 +246,8 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
             }
 
             const savedFiles: { path: string; filename: string; mimeType: string }[] = []
+
+            let qrCodePath: string | null = null;
 
             // Save strip from base64
             if (params.stripDataUrl) {
@@ -267,13 +273,33 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                 }
             }
 
+            // Save QR from base64 (if provided)
+            if (params.qrCodeDataUrl) {
+                const matches = params.qrCodeDataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/)
+                if (matches) {
+                    const buffer = Buffer.from(matches[2], 'base64')
+                    const filename = `temp_session_qr.png`
+                    const destPath = join(baseDir, filename)
+                    writeFileSync(destPath, buffer)
+                    qrCodePath = destPath
+                    savedFiles.push({ path: destPath, filename, mimeType: 'image/png' })
+                }
+            }
+
             // Copy photos (could be data URLs from webcam or file paths from DSLR)
             for (const photo of params.photos) {
                 if (photo.path.startsWith('data:')) {
                     const matches = photo.path.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/)
                     if (matches) {
-                        const buffer = Buffer.from(matches[2], 'base64')
+                        let buffer = Buffer.from(matches[2], 'base64')
                         const destPath = join(baseDir, photo.filename)
+                        if (params.mirrorOutput) {
+                            try {
+                                buffer = await sharp(buffer).flop().toBuffer()
+                            } catch (sharpErr) {
+                                console.error('Failed to mirror webcam photo base64:', sharpErr)
+                            }
+                        }
                         writeFileSync(destPath, buffer)
                         savedFiles.push({ path: destPath, filename: photo.filename, mimeType: 'image/jpeg' })
                     }
@@ -282,7 +308,16 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                     const cleanUrl = photo.path.startsWith('file:///') ? decodeURIComponent(new URL(photo.path).pathname.substring(process.platform === 'win32' ? 1 : 0)) : decodeURIComponent(photo.path)
                     if (existsSync(cleanUrl)) {
                         const destPath = join(baseDir, photo.filename)
-                        copyFileSync(cleanUrl, destPath)
+                        if (params.mirrorOutput) {
+                            try {
+                                await sharp(cleanUrl).flop().toFile(destPath)
+                            } catch (sharpErr) {
+                                console.error('Failed to mirror local photo with sharp:', sharpErr)
+                                copyFileSync(cleanUrl, destPath)
+                            }
+                        } else {
+                            copyFileSync(cleanUrl, destPath)
+                        }
                         savedFiles.push({ path: destPath, filename: photo.filename, mimeType: 'image/jpeg' })
                     } else {
                         console.warn(`Local save: Photo source not found: ${cleanUrl}`)
@@ -324,6 +359,19 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                             // Input N+1: the overlay
                             command = command.input(overlayUrl)
 
+                            // Resolve QR slots list for video
+                            let activeQrSlots: { width: number; height: number; x: number; y: number }[] = []
+                            if (params.frameConfig!.qrSlots && params.frameConfig!.qrSlots.length > 0) {
+                                activeQrSlots = params.frameConfig!.qrSlots
+                            } else if ((params.frameConfig as any).qrSlot && (params.frameConfig as any).qrSlot.enabled) {
+                                activeQrSlots = [(params.frameConfig as any).qrSlot]
+                            }
+
+                            const hasQrSlots = qrCodePath && existsSync(qrCodePath) && activeQrSlots.length > 0
+                            if (hasQrSlots) {
+                                command = command.input(qrCodePath!)
+                            }
+
                             // Construct complex filter graph
                             let filterGraph = ''
 
@@ -339,6 +387,9 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                                 const rotFilter = rot ? `rotate=${rotRad}:ow='iw*abs(cos(${rotRad}))+ih*abs(sin(${rotRad}))':oh='iw*abs(sin(${rotRad}))+ih*abs(cos(${rotRad}))':c=black@0.0` : ''
 
                                 filterGraph += `[${i + 1}:v]format=yuva420p,scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`
+                                if (params.mirrorOutput) {
+                                    filterGraph += `,hflip`
+                                }
                                 if (rotFilter) filterGraph += `,${rotFilter}`
                                 filterGraph += `[v${i}];`
                             })
@@ -369,8 +420,45 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                             })
 
                             // 3. Overlay the final frame image template
-                            const finalNode = 'out'
+                            let finalNode = 'out'
+                            if (hasQrSlots) {
+                                finalNode = 'bg_with_frame'
+                            }
                             filterGraph += `${lastOverlayNode}[${validInputs.length + 1}:v]overlay=0:0[${finalNode}]`
+
+                            if (hasQrSlots) {
+                                filterGraph += ';'
+                                const qrInputIndex = validInputs.length + 2
+                                const numQrSlots = activeQrSlots.length
+
+                                // Split the QR input for reuse in overlaying multiple times
+                                filterGraph += `[${qrInputIndex}:v]split=${numQrSlots}`
+                                for (let i = 0; i < numQrSlots; i++) {
+                                    filterGraph += `[qr_split${i}]`
+                                }
+                                filterGraph += ';'
+
+                                // Scale and overlay each QR slot
+                                let currentLastNode = 'bg_with_frame'
+                                for (let i = 0; i < numQrSlots; i++) {
+                                    const slot = activeQrSlots[i]
+                                    const w = Math.round(slot.width)
+                                    const h = Math.round(slot.height)
+                                    const x = Math.round(slot.x)
+                                    const y = Math.round(slot.y)
+
+                                    // Scale the split QR input
+                                    filterGraph += `[qr_split${i}]scale=${w}:${h}[qr_scaled${i}];`
+
+                                    // Overlay scaled QR onto current background
+                                    const nextBG = i === numQrSlots - 1 ? 'out' : `bg_qr${i}`
+                                    filterGraph += `[${currentLastNode}][qr_scaled${i}]overlay=${x}:${y}[${nextBG}]`
+                                    if (i < numQrSlots - 1) {
+                                        filterGraph += ';'
+                                    }
+                                    currentLastNode = nextBG
+                                }
+                            }
 
                             command
                                 .complexFilter(filterGraph, finalNode)

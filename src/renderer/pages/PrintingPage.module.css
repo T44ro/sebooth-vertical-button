@@ -99,3 +99,21 @@
     font-weight: 800;
     box-shadow: var(--clay-shadow-coral);
 }
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+}
+
+:global(body.app-portrait) .content {
+    min-width: 90% !important;
+    padding: var(--spacing-xl) !important;
+    text-align: center !important;
+}
+
+:global(body.app-portrait) .title {
+    font-size: 32px !important;
+}
+

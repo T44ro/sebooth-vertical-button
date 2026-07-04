@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCameraStore, useFrameStore, useAppConfig } from '../stores'
@@ -23,6 +23,12 @@ function Landing(): JSX.Element {
     const [holdTimer, setHoldTimer] = useState<any | null>(null)
     const [showCameraMenu, setShowCameraMenu] = useState(false)
     const [illustrationError, setIllustrationError] = useState(false)
+
+    // Live Camera Background States
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const streamRef = useRef<MediaStream | null>(null)
+    const [liveCameraEnabled, setLiveCameraEnabled] = useState(false)
+    const [isCameraLoading, setIsCameraLoading] = useState(false)
 
     // Check if video exists (simple check via extension or just try loading)
     useEffect(() => {
@@ -49,6 +55,78 @@ function Landing(): JSX.Element {
         }
         fetchCameras()
     }, [setCameras, selectCamera, selectedCamera])
+
+    // Initialize live camera background when enabled
+    useEffect(() => {
+        if (!liveCameraEnabled) {
+            // Cleanup if feature is disabled
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop())
+                streamRef.current = null
+            }
+            if (videoRef.current) {
+                videoRef.current.srcObject = null
+            }
+            return
+        }
+
+        const initCamera = async (): Promise<void> => {
+            setIsCameraLoading(true)
+
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera API not available. Please check browser permissions.')
+                }
+
+                console.log('[Landing] Requesting camera access...')
+
+                const videoConstraints: MediaTrackConstraints = {
+                    width: { ideal: 1920, min: 1280 },
+                    height: { ideal: 1080, min: 720 },
+                    facingMode: 'user'
+                }
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: videoConstraints,
+                    audio: false
+                })
+
+                console.log('[Landing] Camera stream acquired:', {
+                    videoTracks: stream.getVideoTracks().length,
+                    audioTracks: stream.getAudioTracks().length
+                })
+
+                streamRef.current = stream
+
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream
+                    console.log('[Landing] Stream assigned to video element')
+
+                    // Force play the video
+                    videoRef.current.play().catch(e => {
+                        console.error('[Landing] Video play error:', e)
+                    })
+                }
+
+                setIsCameraLoading(false)
+            } catch (error) {
+                console.error('[Landing] Camera initialization error:', error)
+                const errorMsg = error instanceof Error ? error.message : String(error)
+                console.error('[Landing] Error details:', errorMsg)
+                setLiveCameraEnabled(false)
+                setIsCameraLoading(false)
+            }
+        }
+
+        initCamera()
+
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop())
+                streamRef.current = null
+            }
+        }
+    }, [liveCameraEnabled])
 
     const handleAdminHoldStart = useCallback(() => {
         const timer = setInterval(() => {
@@ -118,12 +196,38 @@ function Landing(): JSX.Element {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
         >
+            {/* ── LIVE CAMERA BACKGROUND ── */}
+            {liveCameraEnabled && (
+                <video
+                    ref={videoRef}
+                    className={styles.liveCameraBackground}
+                    autoPlay
+                    muted
+                    playsInline
+                    style={{
+                        transform: 'scaleX(-1)',
+                    }}
+                />
+            )}
+
             {/* ── TOP NAV ── */}
             <header className={styles.navbar}>
-                {/* Logo */}
-                <div className={styles.navLogo}>
-                    <img src="./assets/icons/icon-camera.png" alt="Sebooth" className={styles.navLogoIcon} />
-                    <span className={styles.navLogoText}>Sebooth</span>
+                {/* Left side: Logo + Live Camera Toggle */}
+                <div className={styles.navLeft}>
+                    {/* Logo */}
+                    <div className={styles.navLogo}>
+                        <img src="./assets/icons/icon-camera.png" alt="Sebooth" className={styles.navLogoIcon} />
+                        <span className={styles.navLogoText}>Sebooth</span>
+                    </div>
+
+                    {/* Live Camera Toggle Button */}
+                    <button
+                        className={`${styles.liveCameraToggle} ${liveCameraEnabled ? styles.active : ''}`}
+                        onClick={() => setLiveCameraEnabled(v => !v)}
+                        title={liveCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+                    >
+                        <span className={styles.toggleIcon}>{liveCameraEnabled ? '📹' : '📷'}</span>
+                    </button>
                 </div>
 
                 {/* Right side: camera selector + admin trigger */}
