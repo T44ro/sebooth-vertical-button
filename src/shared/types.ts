@@ -117,10 +117,14 @@ export interface AppConfig {
     sessionTimerEnabled: boolean // Enable/disable per-session timers
     // Payment Gateway
     paymentEnabled: boolean // Enable/disable payment before capture
+    paymentGateway: 'midtrans' | 'doku' // Selected payment gateway
     sessionPrice: number // Base price for 1 session (includes 1 4R print)
     additionalPrintPrice: number // Price per 2 additional prints
     midtransClientKey: string // Midtrans client key for QRIS
     midtransServerKey: string // Midtrans server key for API
+    dokuClientId: string // Doku client ID for Checkout API
+    dokuSecretKey: string // Doku secret key for signature calculation
+    dokuSandbox: boolean // Enable Sandbox Mode for Doku
     paymentInstructions: string // Payment instructions displayed to user
     paymentTimeout: number // seconds - timeout for payment page
 
@@ -208,6 +212,7 @@ export interface QueueTicket {
     queue_number: number
     display_name: string
     status: 'waiting' | 'called' | 'in_session' | 'completed' | 'skipped'
+    expires_at?: string
 }
 
 export interface QueueEvent {

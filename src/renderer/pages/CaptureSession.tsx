@@ -106,58 +106,76 @@ function CaptureSession(): JSX.Element {
     }, [currentSession, currentFrame, startSession])
 
     // Initialize webcam
+    const initWebcam = useCallback(async (): Promise<void> => {
+        setIsLoadingCamera(true)
+        setCameraError(null)
+
+        try {
+            // Check if mediaDevices is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Camera API not supported in this browser')
+            }
+
+            const videoConstraints: MediaTrackConstraints = {
+                width: { ideal: 1920, min: 640 },
+                height: { ideal: 1080, min: 480 },
+            }
+
+            if (config.selectedCameraId) {
+                videoConstraints.deviceId = { exact: config.selectedCameraId }
+            } else {
+                videoConstraints.facingMode = 'user'
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: videoConstraints
+            })
+            streamRef.current = stream
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream
+            }
+            setIsLoadingCamera(false)
+        } catch (error) {
+            console.error('Failed to access webcam:', error)
+            const err = error as Error
+            let message = 'Failed to access camera'
+
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                message = 'Camera permission denied. Please allow camera access.'
+            } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                message = 'No camera found on this device.'
+            } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                message = 'Camera is being used by another application.'
+            } else if (err.message) {
+                message = err.message
+            }
+
+            setCameraError(message)
+            setIsLoadingCamera(false)
+        }
+    }, [config.selectedCameraId])
+
+    // Manage webcam stream based on captureState and cameraMode to prevent USB locks
     useEffect(() => {
-        const initWebcam = async (): Promise<void> => {
-            setIsLoadingCamera(true)
-            setCameraError(null)
-
-            try {
-                // Check if mediaDevices is available
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error('Camera API not supported in this browser')
-                }
-
-                const videoConstraints: MediaTrackConstraints = {
-                    width: { ideal: 1920, min: 640 },
-                    height: { ideal: 1080, min: 480 },
-                }
-
-                if (config.selectedCameraId) {
-                    videoConstraints.deviceId = { exact: config.selectedCameraId }
-                } else {
-                    videoConstraints.facingMode = 'user'
-                }
-
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: videoConstraints
-                })
-                streamRef.current = stream
+        if (captureState === 'idle' || captureState === 'countdown') {
+            if (!streamRef.current && !isLoadingCamera) {
+                console.log('[CaptureSession] Re-initializing webcam for state:', captureState)
+                initWebcam()
+            }
+        } else if ((captureState === 'capturing' || captureState === 'preview' || captureState === 'reviewPopup') && config.cameraMode !== 'mock') {
+            if (streamRef.current) {
+                console.log('[CaptureSession] Stopping webcam stream to release DSLR PTP lock (state:', captureState, ')')
+                streamRef.current.getTracks().forEach(track => track.stop())
+                streamRef.current = null
                 if (videoRef.current) {
-                    videoRef.current.srcObject = stream
+                    videoRef.current.srcObject = null
                 }
-                setIsLoadingCamera(false)
-            } catch (error) {
-                console.error('Failed to access webcam:', error)
-                const err = error as Error
-                let message = 'Failed to access camera'
-
-                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    message = 'Camera permission denied. Please allow camera access.'
-                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-                    message = 'No camera found on this device.'
-                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-                    message = 'Camera is being used by another application.'
-                } else if (err.message) {
-                    message = err.message
-                }
-
-                setCameraError(message)
-                setIsLoadingCamera(false)
             }
         }
+    }, [captureState, config.cameraMode, initWebcam])
 
-        initWebcam()
-
+    // Cleanup on unmount
+    useEffect(() => {
         return () => {
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop())
@@ -273,7 +291,7 @@ function CaptureSession(): JSX.Element {
         // Initial beep
         playBeep(800, 150)
 
-        countdownRef.current = window.setInterval(() => {
+        countdownRef.current = (window.setInterval as any)(() => {
             setCountdown(prev => {
                 if (prev <= 1) {
                     if (countdownRef.current) {
@@ -310,6 +328,16 @@ function CaptureSession(): JSX.Element {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const windowApi = (window as any).api;
                         if (windowApi && windowApi.camera && windowApi.camera.capture) {
+                            // Synchronously stop the webcam stream to release PTP lock on DSLR USB
+                            if (streamRef.current) {
+                                console.log('[CaptureSession] Stopping webcam stream tracks to release PTP USB lock');
+                                streamRef.current.getTracks().forEach(track => track.stop());
+                                streamRef.current = null;
+                                if (videoRef.current) {
+                                    videoRef.current.srcObject = null;
+                                }
+                            }
+                            
                             const captureRes = await windowApi.camera.capture(slot?.id);
                             if (captureRes.success && captureRes.data && captureRes.data.imagePath) {
                                 // Convert physical path to local file URL
@@ -323,6 +351,28 @@ function CaptureSession(): JSX.Element {
 
                 // Fallback to webcam screenshot if native capture failed or is unavailable
                 if (!dataUrl) {
+                    console.warn('[CaptureSession] Native capture failed, attempting webcam fallback');
+                    // If we stopped the webcam, restart it briefly to capture fallback
+                    if (config.cameraMode !== 'mock' && !streamRef.current) {
+                        try {
+                            const videoConstraints: MediaTrackConstraints = {
+                                width: { ideal: 1920 },
+                                height: { ideal: 1080 }
+                            };
+                            if (config.selectedCameraId) {
+                                videoConstraints.deviceId = { exact: config.selectedCameraId };
+                            }
+                            const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+                            streamRef.current = stream;
+                            if (videoRef.current) {
+                                videoRef.current.srcObject = stream;
+                            }
+                            // Wait a short moment for webcam to initialize
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        } catch (err) {
+                            console.error('Failed to restart webcam for fallback:', err);
+                        }
+                    }
                     dataUrl = captureFromWebcam()
                 }
 

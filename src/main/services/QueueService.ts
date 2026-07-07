@@ -139,6 +139,9 @@ export class QueueService {
             }
 
             const data = (await response.json()) as QueueStatusResponse
+            if (!data || !data.event) {
+                throw new Error('Event tidak ditemukan. Periksa kembali Event ID di pengaturan.')
+            }
             this.currentStatus = data
             this.consecutiveFailures = 0
 

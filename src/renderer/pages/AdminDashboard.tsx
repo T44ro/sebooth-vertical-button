@@ -5,7 +5,7 @@ import { useFrameStore, useAppConfig, useFilterStore, useSessionStore } from '..
 import { AppConfig, FrameConfig, PhotoSlot, PrinterDevice } from '@shared/types'
 import { v4 as uuidv4 } from 'uuid'
 import { apiHelper } from '../lib/apiHelper'
-import { getSessionHistory, SessionHistoryItem } from '../lib/supabase'
+import { getSessionHistory, SessionHistoryItem, getSupabase } from '../lib/supabase'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
 import styles from './AdminDashboard.module.css'
 
@@ -21,6 +21,8 @@ function AdminDashboard(): JSX.Element {
     const [activeTab, setActiveTab] = useState<'frames' | 'timers' | 'filters' | 'payment' | 'history' | 'sharing' | 'printers' | 'queue' | 'webhook'>('frames')
     const [cloudQueue, setCloudQueue] = useState<any[]>([])
     const [isLoadingQueue, setIsLoadingQueue] = useState(false)
+    const [eventsList, setEventsList] = useState<{ id: string; name: string; booth_name: string }[]>([])
+    const [isLoadingEvents, setIsLoadingEvents] = useState(false)
     const [printQueue, setPrintQueue] = useState<any[]>([])
     const [printHistory, setPrintHistory] = useState<any[]>([])
     const [isLoadingPrintData, setIsLoadingPrintData] = useState(false)
@@ -90,6 +92,30 @@ function AdminDashboard(): JSX.Element {
         return () => clearInterval(intervalId)
     }, [activeTab])
 
+    // Fetch queue events from Supabase when queue tab is selected
+    useEffect(() => {
+        if (activeTab === 'queue') {
+            const fetchEvents = async () => {
+                setIsLoadingEvents(true)
+                try {
+                    const supabaseClient = getSupabase()
+                    const { data, error } = await supabaseClient
+                        .from('queue_events')
+                        .select('id, name, booth_name')
+                        .order('created_at', { ascending: false })
+                    if (!error && data) {
+                        setEventsList(data)
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch events from Supabase:', e)
+                } finally {
+                    setIsLoadingEvents(false)
+                }
+            }
+            fetchEvents()
+        }
+    }, [activeTab])
+
     // Fetch available printers
     useEffect(() => {
         const fetchPrinters = async () => {
@@ -131,7 +157,14 @@ function AdminDashboard(): JSX.Element {
         }
         if (activeTab === 'printers') {
             fetchDevices()
+            
+            // Auto-refresh devices when hardware configuration changes (connecting/disconnecting camera)
+            navigator.mediaDevices.addEventListener('devicechange', fetchDevices)
+            return () => {
+                navigator.mediaDevices.removeEventListener('devicechange', fetchDevices)
+            }
         }
+        return undefined
     }, [activeTab])
 
     const selectedFrame = frames.find(f => f.id === selectedFrameId)
@@ -1391,33 +1424,93 @@ function AdminDashboard(): JSX.Element {
                         </div>
 
                         <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
-                            <h3>🔑 Midtrans API Keys</h3>
-                            <p>Enter your Midtrans Sandbox/Production keys</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px', color: 'var(--color-text-secondary)' }}>Client Key</label>
-                                    <input
-                                        type="text"
-                                        value={config.midtransClientKey}
-                                        onChange={(e) => updateConfig({ midtransClientKey: e.target.value })}
-                                        placeholder="SB-Mid-client-xxx"
-                                        disabled={!config.paymentEnabled}
-                                        style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'white' }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px', color: 'var(--color-text-secondary)' }}>Server Key</label>
-                                    <input
-                                        type="password"
-                                        value={config.midtransServerKey}
-                                        onChange={(e) => updateConfig({ midtransServerKey: e.target.value })}
-                                        placeholder="SB-Mid-server-xxx"
-                                        disabled={!config.paymentEnabled}
-                                        style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'white' }}
-                                    />
+                            <h3>💳 Payment Gateway Provider</h3>
+                            <p>Pilih penyedia layanan payment gateway yang digunakan</p>
+                            <select
+                                value={config.paymentGateway || 'midtrans'}
+                                onChange={(e) => updateConfig({ paymentGateway: e.target.value as 'midtrans' | 'doku' })}
+                                disabled={!config.paymentEnabled}
+                                style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'white', marginTop: '12px' }}
+                            >
+                                <option value="midtrans">Midtrans (QRIS)</option>
+                                <option value="doku">DOKU Checkout (QRIS)</option>
+                            </select>
+                        </div>
+
+                        {(!config.paymentGateway || config.paymentGateway === 'midtrans') && (
+                            <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                                <h3>🔑 Midtrans API Keys</h3>
+                                <p>Enter your Midtrans Sandbox/Production keys</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px', color: 'var(--color-text-secondary)' }}>Client Key</label>
+                                        <input
+                                            type="text"
+                                            value={config.midtransClientKey}
+                                            onChange={(e) => updateConfig({ midtransClientKey: e.target.value })}
+                                            placeholder="SB-Mid-client-xxx"
+                                            disabled={!config.paymentEnabled}
+                                            style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'white' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px', color: 'var(--color-text-secondary)' }}>Server Key</label>
+                                        <input
+                                            type="password"
+                                            value={config.midtransServerKey}
+                                            onChange={(e) => updateConfig({ midtransServerKey: e.target.value })}
+                                            placeholder="SB-Mid-server-xxx"
+                                            disabled={!config.paymentEnabled}
+                                            style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'white' }}
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
+
+                        {config.paymentGateway === 'doku' && (
+                            <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                                <h3>🔑 DOKU API Credentials</h3>
+                                <p>Enter your DOKU Sandbox/Production credentials</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px', color: 'var(--color-text-secondary)' }}>Client ID</label>
+                                        <input
+                                            type="text"
+                                            value={config.dokuClientId}
+                                            onChange={(e) => updateConfig({ dokuClientId: e.target.value })}
+                                            placeholder="MCH-xxx atau GPP-xxx"
+                                            disabled={!config.paymentEnabled}
+                                            style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'white' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px', color: 'var(--color-text-secondary)' }}>Secret Key (Shared Key)</label>
+                                        <input
+                                            type="password"
+                                            value={config.dokuSecretKey}
+                                            onChange={(e) => updateConfig({ dokuSecretKey: e.target.value })}
+                                            placeholder="SK-xxx"
+                                            disabled={!config.paymentEnabled}
+                                            style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'white' }}
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                        <input
+                                            type="checkbox"
+                                            id="dokuSandbox"
+                                            checked={config.dokuSandbox}
+                                            onChange={(e) => updateConfig({ dokuSandbox: e.target.checked })}
+                                            disabled={!config.paymentEnabled}
+                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                        />
+                                        <label htmlFor="dokuSandbox" style={{ fontSize: '14px', color: 'white', cursor: 'pointer' }}>
+                                            DOKU Sandbox Mode (Gunakan API testing Sandbox)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
                             <h3>📝 Payment Instructions</h3>
@@ -1779,31 +1872,70 @@ function AdminDashboard(): JSX.Element {
                                 <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '10px' }}>
                                     Pilih perangkat sumber video untuk preview di layar (misalnya USB Capture Card atau Webcam).
                                 </p>
-                                <select 
-                                    value={config.selectedCameraId || ''} 
-                                    onChange={(e) => updateConfig({ selectedCameraId: e.target.value })}
-                                    style={{
-                                        width: '100%',
-                                        maxWidth: '400px',
-                                        padding: '12px',
-                                        fontSize: '14px',
-                                        borderRadius: '8px',
-                                        border: '1px solid var(--color-border)',
-                                        background: 'var(--color-bg-primary)',
-                                        color: 'white',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <option value="" disabled={videoDevices.length > 0}>
-                                        {isLoadingDevices ? 'Memuat daftar kamera...' : 
-                                         videoDevices.length > 0 ? 'Select a camera...' : 'Tidak ada kamera ditemukan'}
-                                    </option>
-                                    {videoDevices.map((device, index) => (
-                                        <option key={device.deviceId} value={device.deviceId}>
-                                            {device.label || `Camera ${index + 1}`}
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                    <select 
+                                        value={config.selectedCameraId || ''} 
+                                        onChange={(e) => updateConfig({ selectedCameraId: e.target.value })}
+                                        style={{
+                                            flex: 1,
+                                            maxWidth: '400px',
+                                            padding: '12px',
+                                            fontSize: '14px',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--color-border)',
+                                            background: 'var(--color-bg-primary)',
+                                            color: 'white',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <option value="" disabled={videoDevices.length > 0}>
+                                            {isLoadingDevices ? 'Memuat daftar kamera...' : 
+                                             videoDevices.length > 0 ? 'Select a camera...' : 'Tidak ada kamera ditemukan'}
                                         </option>
-                                    ))}
-                                </select>
+                                        {videoDevices.map((device, index) => (
+                                            <option key={device.deviceId} value={device.deviceId}>
+                                                {device.label || `Camera ${index + 1}`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        onClick={async () => {
+                                            setIsLoadingDevices(true)
+                                            try {
+                                                let stream = null;
+                                                try {
+                                                    stream = await navigator.mediaDevices.getUserMedia({ video: true })
+                                                } catch (e) {
+                                                    console.warn('Manual refresh getUserMedia failed:', e)
+                                                }
+                                                const devices = await navigator.mediaDevices.enumerateDevices()
+                                                const videoInputs = devices.filter(device => device.kind === 'videoinput')
+                                                setVideoDevices(videoInputs)
+                                                if (stream) {
+                                                    stream.getTracks().forEach(track => track.stop())
+                                                }
+                                            } catch (err) {
+                                                console.error('Manual refresh of video devices failed:', err)
+                                            } finally {
+                                                setIsLoadingDevices(false)
+                                            }
+                                        }}
+                                        disabled={isLoadingDevices}
+                                        style={{
+                                            padding: '12px 18px',
+                                            fontSize: '14px',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--color-border)',
+                                            background: 'var(--color-bg-secondary)',
+                                            color: 'white',
+                                            cursor: 'pointer',
+                                            fontWeight: 'bold',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        {isLoadingDevices ? '🔄...' : '🔄 REFRESH'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -2023,7 +2155,31 @@ function AdminDashboard(): JSX.Element {
 
                         <div className={styles.timerCard}>
                             <h3>📋 Event ID</h3>
-                            <p>UUID dari event antrean yang aktif di website</p>
+                            <p>Pilih Event Antrean atau masukkan UUID secara manual</p>
+                            {eventsList.length > 0 && (
+                                <select
+                                    value={config.queueEventId || ''}
+                                    onChange={(e) => updateConfig({ queueEventId: e.target.value })}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 14px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--color-border, #374151)',
+                                        background: 'var(--color-bg-secondary, #1f2937)',
+                                        color: 'var(--color-text-primary, #f9fafb)',
+                                        fontSize: '14px',
+                                        boxSizing: 'border-box',
+                                        marginBottom: '10px'
+                                    }}
+                                >
+                                    <option value="">-- Pilih Event dari Cloud --</option>
+                                    {eventsList.map(evt => (
+                                        <option key={evt.id} value={evt.id}>
+                                            {evt.name} ({evt.booth_name})
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
                             <input
                                 type="text"
                                 value={config.queueEventId || ''}

@@ -13,6 +13,7 @@ declare global {
       window: any
       email: any
       image: any
+      payment: any
     }
   }
 }

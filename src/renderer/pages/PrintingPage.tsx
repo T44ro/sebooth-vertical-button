@@ -112,10 +112,10 @@ function PrintingPage(): JSX.Element {
             } catch { /* ignore, use fallback */ }
 
             // Fallback: use the base64 composite we have in state
-            if (!stripPath && currentSession.compositePath) {
+            if (!stripPath && currentSession?.compositePath) {
                 const saveResult = await (window as any).api.system.saveDataUrl(
                     currentSession.compositePath,
-                    `strip_${currentSession!.id}.jpg`
+                    `strip_${currentSession.id}.jpg`
                 )
                 if (saveResult.success && saveResult.data) {
                     stripPath = saveResult.data

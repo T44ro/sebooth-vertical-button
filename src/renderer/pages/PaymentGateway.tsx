@@ -18,7 +18,7 @@ function PaymentGateway(): JSX.Element {
     const navigate = useNavigate()
     const { activeFrame } = useFrameStore()
     const { config } = useAppConfig()
-    const { startSession } = useSessionStore()
+    const { startSession, endSession } = useSessionStore()
 
     const [additionalPrints, setAdditionalPrints] = useState(0)
     const [payment, setPayment] = useState<PaymentState>({
@@ -39,62 +39,90 @@ function PaymentGateway(): JSX.Element {
         setAdditionalPrints(prev => Math.max(0, prev + delta))
     }
 
-    // Create Midtrans QRIS order
+    // Create QRIS order
     const createOrder = async (): Promise<void> => {
-        if (!config.midtransServerKey) {
-            alert('Midtrans Server Key belum dikonfigurasi di Admin Panel')
-            return
+        const isDoku = config.paymentGateway === 'doku'
+        
+        if (isDoku) {
+            if (!config.dokuClientId || !config.dokuSecretKey) {
+                alert('DOKU Client ID atau Secret Key belum dikonfigurasi di Admin Panel')
+                return
+            }
+        } else {
+            if (!config.midtransServerKey) {
+                alert('Midtrans Server Key belum dikonfigurasi di Admin Panel')
+                return
+            }
         }
 
         setIsCreatingOrder(true)
         const orderId = `SEBOOTH-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
         try {
-            // Create Midtrans transaction
-            const auth = btoa(`${config.midtransServerKey}:`)
-            const response = await fetch('https://api.sandbox.midtrans.com/v2/charge', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Basic ${auth}`,
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    payment_type: 'qris',
-                    transaction_details: {
-                        order_id: orderId,
-                        gross_amount: totalPrice
-                    },
-                    qris: {
-                        acquirer: 'gopay'
-                    }
-                })
-            })
-
-            const data = await response.json()
-
-            if (data.actions && data.actions[0]) {
-                const qrisAction = data.actions.find((a: { name: string }) => a.name === 'generate-qr-code')
-                setPayment({
-                    status: 'pending',
+            if (isDoku) {
+                // Call electron main IPC to create Doku session securely
+                const res = await (window as any).api.payment.dokuCreateSession({
                     orderId: orderId,
-                    qrisUrl: qrisAction?.url || data.actions[0].url,
-                    transactionId: data.transaction_id
+                    amount: totalPrice
                 })
 
-                // Start polling for payment status
-                startPolling(orderId)
-            } else if (data.status_code === '201' || data.status_code === '200') {
-                // For some responses, QR code might be in different format
-                setPayment({
-                    status: 'pending',
-                    orderId: orderId,
-                    qrisUrl: data.qr_string || null,
-                    transactionId: data.transaction_id
-                })
-                startPolling(orderId)
+                if (res.success && res.data) {
+                    setPayment({
+                        status: 'pending',
+                        orderId: orderId,
+                        qrisUrl: res.data.paymentUrl,
+                        transactionId: null
+                    })
+                    startPolling(orderId)
+                } else {
+                    throw new Error(res.error || 'Gagal membuat sesi pembayaran DOKU')
+                }
             } else {
-                throw new Error(data.status_message || 'Failed to create order')
+                // Create Midtrans transaction
+                const auth = btoa(`${config.midtransServerKey}:`)
+                const response = await fetch('https://api.sandbox.midtrans.com/v2/charge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${auth}`,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        payment_type: 'qris',
+                        transaction_details: {
+                            order_id: orderId,
+                            gross_amount: totalPrice
+                        },
+                        qris: {
+                            acquirer: 'gopay'
+                        }
+                    })
+                })
+
+                const data = await response.json()
+
+                if (data.actions && data.actions[0]) {
+                    const qrisAction = data.actions.find((a: { name: string }) => a.name === 'generate-qr-code')
+                    setPayment({
+                        status: 'pending',
+                        orderId: orderId,
+                        qrisUrl: qrisAction?.url || data.actions[0].url,
+                        transactionId: data.transaction_id
+                    })
+
+                    // Start polling for payment status
+                    startPolling(orderId)
+                } else if (data.status_code === '201' || data.status_code === '200') {
+                    setPayment({
+                        status: 'pending',
+                        orderId: orderId,
+                        qrisUrl: data.qr_string || null,
+                        transactionId: data.transaction_id
+                    })
+                    startPolling(orderId)
+                } else {
+                    throw new Error(data.status_message || 'Failed to create order')
+                }
             }
         } catch (err) {
             console.error('Payment error:', err)
@@ -108,47 +136,74 @@ function PaymentGateway(): JSX.Element {
     // Poll for payment status
     const startPolling = (orderId: string): void => {
         if (pollInterval) clearInterval(pollInterval)
+        const isDoku = config.paymentGateway === 'doku'
 
         const interval = setInterval(async () => {
             try {
-                const auth = btoa(`${config.midtransServerKey}:`)
-                const response = await fetch(
-                    `https://api.sandbox.midtrans.com/v2/${orderId}/status`,
-                    {
-                        headers: {
-                            'Authorization': `Basic ${auth}`,
-                            'Accept': 'application/json'
+                if (isDoku) {
+                    const res = await (window as any).api.payment.dokuCheckStatus({
+                        invoiceNumber: orderId
+                    })
+
+                    if (res.success && res.data) {
+                        const status = res.data.status // PENDING, SUCCESS, FAILED
+                        if (status === 'SUCCESS') {
+                            clearInterval(interval)
+                            setPollInterval(null)
+                            setPayment(prev => ({ ...prev, status: 'success' }))
+
+                            // Start session and navigate to capture
+                            setTimeout(() => {
+                                if (activeFrame) {
+                                    startSession(activeFrame.id)
+                                }
+                                navigate('/capture')
+                            }, 2000)
+                        } else if (status === 'FAILED') {
+                            clearInterval(interval)
+                            setPollInterval(null)
+                            setPayment(prev => ({ ...prev, status: 'failed' }))
                         }
                     }
-                )
-                const data = await response.json()
-
-                if (data.transaction_status === 'settlement' || data.transaction_status === 'capture') {
-                    clearInterval(interval)
-                    setPollInterval(null)
-                    setPayment(prev => ({ ...prev, status: 'success' }))
-
-                    // Start session and navigate to capture
-                    setTimeout(() => {
-                        if (activeFrame) {
-                            startSession(activeFrame.id)
+                } else {
+                    const auth = btoa(`${config.midtransServerKey}:`)
+                    const response = await fetch(
+                        `https://api.sandbox.midtrans.com/v2/${orderId}/status`,
+                        {
+                            headers: {
+                                'Authorization': `Basic ${auth}`,
+                                'Accept': 'application/json'
+                            }
                         }
-                        navigate('/capture')
-                    }, 2000)
-                } else if (data.transaction_status === 'expire' || data.transaction_status === 'cancel') {
-                    clearInterval(interval)
-                    setPollInterval(null)
-                    setPayment(prev => ({ ...prev, status: 'expired' }))
+                    )
+                    const data = await response.json()
+
+                    if (data.transaction_status === 'settlement' || data.transaction_status === 'capture') {
+                        clearInterval(interval)
+                        setPollInterval(null)
+                        setPayment(prev => ({ ...prev, status: 'success' }))
+
+                        // Start session and navigate to capture
+                        setTimeout(() => {
+                            if (activeFrame) {
+                                startSession(activeFrame.id)
+                            }
+                            navigate('/capture')
+                        }, 2000)
+                    } else if (data.transaction_status === 'expire' || data.transaction_status === 'cancel') {
+                        clearInterval(interval)
+                        setPollInterval(null)
+                        setPayment(prev => ({ ...prev, status: 'expired' }))
+                    }
                 }
             } catch (err) {
                 console.error('Status check error:', err)
             }
-        }, 3000) // Check every 3 seconds
+        }, 4000) // Poll every 4 seconds
 
         setPollInterval(interval)
     }
 
-    // Cleanup polling on unmount
     useEffect(() => {
         return () => {
             if (pollInterval) clearInterval(pollInterval)
@@ -266,8 +321,6 @@ function PaymentGateway(): JSX.Element {
                             </button>
                         )}
                     </div>
-
-                    {/* Right - QR Code / Status */}
                     <div className={styles.qrSection}>
                         {payment.status === 'idle' && (
                             <div className={styles.qrPlaceholder}>
@@ -279,7 +332,20 @@ function PaymentGateway(): JSX.Element {
                         {payment.status === 'pending' && payment.qrisUrl && (
                             <div className={styles.qrDisplay}>
                                 <h3>Scan QRIS</h3>
-                                {payment.qrisUrl.startsWith('http') ? (
+                                {config.paymentGateway === 'doku' ? (
+                                    <iframe 
+                                        src={payment.qrisUrl} 
+                                        title="Doku QRIS" 
+                                        style={{ 
+                                            width: '100%', 
+                                            height: '380px', 
+                                            border: 'none', 
+                                            borderRadius: '12px',
+                                            background: 'white',
+                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+                                        }} 
+                                    />
+                                ) : payment.qrisUrl.startsWith('http') ? (
                                     <img src={payment.qrisUrl} alt="QRIS" className={styles.qrImage} />
                                 ) : (
                                     <div className={styles.qrWrapper}>

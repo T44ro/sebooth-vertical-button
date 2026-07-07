@@ -293,6 +293,15 @@ const api = {
                 ipcRenderer.removeListener('config:updated', subscription)
             }
         }
+    },
+
+    // Payment APIs (Doku Integration)
+    payment: {
+        dokuCreateSession: (params: { orderId: string; amount: number }): Promise<APIResponse<{ paymentUrl: string; invoiceNumber: string }>> =>
+            ipcRenderer.invoke('payment:doku-create-session', params),
+        
+        dokuCheckStatus: (params: { invoiceNumber: string }): Promise<APIResponse<{ status: string; raw: any }>> =>
+            ipcRenderer.invoke('payment:doku-check-status', params)
     }
 }
 

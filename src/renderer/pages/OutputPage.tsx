@@ -13,7 +13,7 @@ import QRCode from 'qrcode'
 function OutputPage(): JSX.Element {
     const navigate = useNavigate()
     const { frames, activeFrame } = useFrameStore()
-    const { photos, currentSession, setCompositePath, selectedFilter, isMirrored } = useSessionStore()
+    const { photos, currentSession, setCompositePath, selectedFilter, isMirrored, endSession } = useSessionStore()
     const { config } = useAppConfig()
 
     const sessionFrame = currentSession?.frameId
@@ -69,7 +69,7 @@ function OutputPage(): JSX.Element {
 
     // New: Trigger upload when processing is done and composite is ready
     const resolveSourceSlotId = (slot: PhotoSlot): string => {
-        if (!slot.duplicateOfSlotId) return slot.id
+        if (!slot.duplicateOfSlotId || !sessionFrame) return slot.id
         const sourceSlot = sessionFrame.slots.find(s => s.id === slot.duplicateOfSlotId)
         return sourceSlot ? resolveSourceSlotId(sourceSlot) : slot.duplicateOfSlotId
     }

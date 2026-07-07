@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import {
     FrameConfig,
     PhotoSlot,
+    QRSlot,
     CapturedPhoto,
     SessionData,
     AppConfig,
@@ -40,10 +41,14 @@ const defaultConfig: AppConfig = {
     sessionTimerEnabled: true,
     // Payment Gateway
     paymentEnabled: false,
+    paymentGateway: 'midtrans',
     sessionPrice: 25000, // IDR 25,000 base price
     additionalPrintPrice: 5000, // IDR 5,000 per 2 additional prints
     midtransClientKey: '',
     midtransServerKey: '',
+    dokuClientId: '',
+    dokuSecretKey: '',
+    dokuSandbox: true,
     paymentInstructions: 'Scan QR code dengan aplikasi e-wallet atau mobile banking Anda. Pembayaran akan terkonfirmasi otomatis.',
     paymentTimeout: 300, // 5 minutes
     sharingMode: 'cloud', // Can be 'cloud' or 'local'
