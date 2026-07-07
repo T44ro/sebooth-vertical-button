@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import {
     CameraDevice,
     CaptureResult,
+    CameraPropertyValues,
     PrinterDevice,
     PrintResult,
     PhotoSlot,
@@ -35,7 +36,27 @@ const api = {
             ipcRenderer.invoke('camera:use-real'),
 
         useDirectPtp: (): Promise<APIResponse<void>> =>
-            ipcRenderer.invoke('camera:use-direct-ptp')
+            ipcRenderer.invoke('camera:use-direct-ptp'),
+
+        // Camera Property Control (ISO, Aperture, Shutter Speed)
+        setProperty: (property: string, value: string): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:set-property', property, value),
+
+        getProperty: (property: string): Promise<APIResponse<string | null>> =>
+            ipcRenderer.invoke('camera:get-property', property),
+
+        getAvailableValues: (property: string): Promise<APIResponse<CameraPropertyValues>> =>
+            ipcRenderer.invoke('camera:get-available-values', property),
+
+        // Live View Control
+        startLiveView: (): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:start-liveview'),
+
+        stopLiveView: (): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:stop-liveview'),
+
+        getLiveViewUrl: (): Promise<APIResponse<string>> =>
+            ipcRenderer.invoke('camera:get-liveview-url')
     },
 
     // Printer APIs

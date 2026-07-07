@@ -3,9 +3,9 @@ import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
 import { CameraHandler } from '../handlers/CameraHandler'
 import { GPhotoCamera } from '../handlers/GPhotoCamera'
-import { WIAShutterCamera } from '../handlers/WIAShutterCamera'
+import { DigiCamHTTPCamera } from '../handlers/DigiCamHTTPCamera'
 import { MockCamera } from '../handlers/MockCamera'
-import { CameraDevice, CaptureResult, APIResponse } from '@shared/types'
+import { CameraDevice, CaptureResult, CameraPropertyValues, APIResponse } from '@shared/types'
 
 // Use GPhoto (Lightweight) in production, Mock in development
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -118,14 +118,94 @@ export function registerCameraHandlers(ipcMain: IpcMain): void {
         return { success: true }
     })
 
-    // Switch to Direct Shutter (Standalone)
+    // Switch to DigiCamControl HTTP API (Full Camera Control)
     ipcMain.handle('camera:use-direct-ptp', async (): Promise<APIResponse<void>> => {
-        // Shutdown existing DSLR handler if it has a shutdown method
+        // Shutdown existing handler if it has a shutdown method
         if (cameraHandler && 'shutdown' in cameraHandler) {
             await (cameraHandler as any).shutdown()
         }
-        cameraHandler = new WIAShutterCamera()
-        console.log('[Camera IPC] Switched to WIA Shutter Camera (Standalone mode)')
+        cameraHandler = new DigiCamHTTPCamera()
+        console.log('[Camera IPC] Switched to DigiCamControl HTTP Camera (Full Control mode)')
         return { success: true }
+    })
+
+    // ══════════════════════════════════════════════════════════
+    // Camera Property Control (ISO, Aperture, Shutter Speed)
+    // ══════════════════════════════════════════════════════════
+
+    ipcMain.handle('camera:set-property', async (_, property: string, value: string): Promise<APIResponse<boolean>> => {
+        try {
+            if ('setProperty' in cameraHandler) {
+                const result = await (cameraHandler as DigiCamHTTPCamera).setProperty(property, value)
+                return { success: true, data: result }
+            }
+            return { success: false, error: 'Current camera handler does not support property control' }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
+    })
+
+    ipcMain.handle('camera:get-property', async (_, property: string): Promise<APIResponse<string | null>> => {
+        try {
+            if ('getProperty' in cameraHandler) {
+                const result = await (cameraHandler as DigiCamHTTPCamera).getProperty(property)
+                return { success: true, data: result }
+            }
+            return { success: false, error: 'Current camera handler does not support property control' }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
+    })
+
+    ipcMain.handle('camera:get-available-values', async (_, property: string): Promise<APIResponse<CameraPropertyValues>> => {
+        try {
+            if ('getAvailableValues' in cameraHandler) {
+                const result = await (cameraHandler as DigiCamHTTPCamera).getAvailableValues(property)
+                return { success: true, data: result }
+            }
+            return { success: false, error: 'Current camera handler does not support property control' }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
+    })
+
+    // ══════════════════════════════════════════════════════════
+    // Live View Control
+    // ══════════════════════════════════════════════════════════
+
+    ipcMain.handle('camera:start-liveview', async (): Promise<APIResponse<boolean>> => {
+        try {
+            if ('startLiveView' in cameraHandler) {
+                const result = await (cameraHandler as DigiCamHTTPCamera).startLiveView()
+                return { success: true, data: result }
+            }
+            return { success: false, error: 'Current camera handler does not support live view' }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
+    })
+
+    ipcMain.handle('camera:stop-liveview', async (): Promise<APIResponse<boolean>> => {
+        try {
+            if ('stopLiveView' in cameraHandler) {
+                const result = await (cameraHandler as DigiCamHTTPCamera).stopLiveView()
+                return { success: true, data: result }
+            }
+            return { success: false, error: 'Current camera handler does not support live view' }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
+    })
+
+    ipcMain.handle('camera:get-liveview-url', async (): Promise<APIResponse<string>> => {
+        try {
+            if ('getLiveViewUrl' in cameraHandler) {
+                const url = (cameraHandler as DigiCamHTTPCamera).getLiveViewUrl()
+                return { success: true, data: url }
+            }
+            return { success: false, error: 'Current camera handler does not support live view' }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
     })
 }

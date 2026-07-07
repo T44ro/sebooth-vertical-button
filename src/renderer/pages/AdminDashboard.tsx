@@ -42,6 +42,20 @@ function AdminDashboard(): JSX.Element {
     const [isLoadingDevices, setIsLoadingDevices] = useState(false)
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
 
+    // Camera Control State (for digiCamControl HTTP mode)
+    const [cameraConnected, setCameraConnected] = useState(false)
+    const [cameraConnecting, setCameraConnecting] = useState(false)
+    const [liveViewUrl, setLiveViewUrl] = useState<string | null>(null)
+    const [liveViewActive, setLiveViewActive] = useState(false)
+    const [liveViewKey, setLiveViewKey] = useState(0)
+    const [isoValues, setIsoValues] = useState<{ current: string; available: string[] }>({ current: '', available: [] })
+    const [apertureValues, setApertureValues] = useState<{ current: string; available: string[] }>({ current: '', available: [] })
+    const [shutterValues, setShutterValues] = useState<{ current: string; available: string[] }>({ current: '', available: [] })
+    const [wbValues, setWbValues] = useState<{ current: string; available: string[] }>({ current: '', available: [] })
+    const [cameraSettingsLoading, setCameraSettingsLoading] = useState(false)
+    const [captureTestResult, setCaptureTestResult] = useState<string | null>(null)
+    const liveViewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
     const canvasRef = useRef<HTMLDivElement>(null)
 
     // Fetch handlers
@@ -1782,10 +1796,10 @@ function AdminDashboard(): JSX.Element {
                                         style={{ width: '20px', height: '20px' }}
                                     />
                                     <div>
-                                        <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'white' }}>🚀 DSLR Direct (BETA)</div>
+                                        <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'white' }}>📸 DSLR Camera (digiCamControl)</div>
                                         <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>
-                                            Standalone Mode: No external apps needed. 
-                                            Sebooth controls the shutter directly via USB.
+                                            Full Control: Shutter, ISO, Aperture, Shutter Speed, Live View. 
+                                            Menggunakan digiCamControl HTTP API.
                                         </div>
                                     </div>
                                 </label>
@@ -1818,27 +1832,277 @@ function AdminDashboard(): JSX.Element {
                             </div>
 
                             {config.cameraMode === 'ptp' && (
-                                <div style={{ marginTop: '15px', padding: '15px', background: 'rgba(239,68,68,0.1)', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.3)' }}>
-                                    <p style={{ margin: 0, fontSize: '13px', color: '#fca5a5', lineHeight: '1.6' }}>
-                                        🔥 <b>Mode Direct Shutter (Standalone)</b><br />
-                                        • Tidak perlu install aplikasi luar lagi.<br />
-                                        • Sebooth langsung mengirim sinyal jepret ke Canon 60D.<br />
-                                        • <b>Penting:</b> Tetap gunakan Canon Webcam Utility untuk live preview.
-                                    </p>
-                                    <button
-                                        onClick={async () => {
-                                            try {
-                                                const result = await window.api.camera.capture('admin_test')
-                                                if (result.success) alert('Shutter Berhasil Ter-trigger! 📸')
-                                                else alert('Gagal: ' + result.error)
-                                            } catch (e: any) {
-                                                alert('Error: ' + e.message)
-                                            }
-                                        }}
-                                        style={{ marginTop: '10px', background: '#ef4444', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-                                    >
-                                        ⚡ TEST DIRECT SHUTTER
-                                    </button>
+                                <div style={{ marginTop: '15px', padding: '20px', background: 'rgba(239,68,68,0.05)', borderRadius: '12px', border: '1px solid rgba(239,68,68,0.3)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, color: '#fca5a5' }}>🎛️ Camera Control Panel (digiCamControl)</h4>
+                                            <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#9ca3af' }}>
+                                                Full control: Shutter, ISO, Aperture, Shutter Speed, Live View
+                                            </p>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button
+                                                disabled={cameraConnecting}
+                                                onClick={async () => {
+                                                    setCameraConnecting(true)
+                                                    setCaptureTestResult(null)
+                                                    try {
+                                                        // Connect to camera
+                                                        const connectResult = await window.api.camera.connect('digicam_http_0')
+                                                        if (connectResult.success) {
+                                                            setCameraConnected(true)
+                                                            // Load camera settings
+                                                            setCameraSettingsLoading(true)
+                                                            try {
+                                                                const [iso, aperture, shutter, wb] = await Promise.all([
+                                                                    window.api.camera.getAvailableValues('iso'),
+                                                                    window.api.camera.getAvailableValues('aperture'),
+                                                                    window.api.camera.getAvailableValues('shutterspeed'),
+                                                                    window.api.camera.getAvailableValues('whitebalance')
+                                                                ])
+                                                                if (iso.success && iso.data) setIsoValues(iso.data)
+                                                                if (aperture.success && aperture.data) setApertureValues(aperture.data)
+                                                                if (shutter.success && shutter.data) setShutterValues(shutter.data)
+                                                                if (wb.success && wb.data) setWbValues(wb.data)
+                                                            } catch (e) { console.error('Failed to load camera settings:', e) }
+                                                            setCameraSettingsLoading(false)
+
+                                                            // Start live view
+                                                            try {
+                                                                await window.api.camera.startLiveView()
+                                                                const urlResult = await window.api.camera.getLiveViewUrl()
+                                                                if (urlResult.success && urlResult.data) {
+                                                                    setLiveViewUrl(urlResult.data)
+                                                                    setLiveViewActive(true)
+                                                                    // Refresh live view image periodically
+                                                                    if (liveViewTimerRef.current) clearInterval(liveViewTimerRef.current)
+                                                                    liveViewTimerRef.current = setInterval(() => {
+                                                                        setLiveViewKey(k => k + 1)
+                                                                    }, 200)
+                                                                }
+                                                            } catch (e) { console.error('Failed to start live view:', e) }
+                                                        } else {
+                                                            setCaptureTestResult('❌ Gagal connect: ' + (connectResult.error || 'Unknown'))
+                                                        }
+                                                    } catch (e: any) {
+                                                        setCaptureTestResult('❌ Error: ' + e.message)
+                                                    }
+                                                    setCameraConnecting(false)
+                                                }}
+                                                style={{
+                                                    padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px',
+                                                    background: cameraConnected ? '#10b981' : '#ef4444', color: 'white',
+                                                    opacity: cameraConnecting ? 0.6 : 1
+                                                }}
+                                            >
+                                                {cameraConnecting ? '⏳ Connecting...' : cameraConnected ? '✅ Connected' : '🔌 Connect Camera'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Live View Preview */}
+                                    {liveViewActive && liveViewUrl && (
+                                        <div style={{ marginBottom: '15px', borderRadius: '10px', overflow: 'hidden', border: '2px solid rgba(239,68,68,0.3)', background: '#000', textAlign: 'center' }}>
+                                            <img
+                                                key={liveViewKey}
+                                                src={`${liveViewUrl}?t=${liveViewKey}`}
+                                                alt="Live View"
+                                                style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain' }}
+                                                onError={(e) => {
+                                                    // Hide broken image icon
+                                                    (e.target as HTMLImageElement).style.display = 'none'
+                                                }}
+                                                onLoad={(e) => {
+                                                    (e.target as HTMLImageElement).style.display = 'block'
+                                                }}
+                                            />
+                                            <p style={{ margin: '4px 0', fontSize: '11px', color: '#666' }}>📹 Live View from Camera Sensor</p>
+                                        </div>
+                                    )}
+
+                                    {/* Camera Settings Dropdowns */}
+                                    {cameraConnected && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
+                                            {/* ISO */}
+                                            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
+                                                <label style={{ display: 'block', fontSize: '12px', color: '#fca5a5', marginBottom: '4px', fontWeight: 'bold' }}>ISO</label>
+                                                <select
+                                                    value={isoValues.current}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value
+                                                        setIsoValues(prev => ({ ...prev, current: val }))
+                                                        await window.api.camera.setProperty('iso', val)
+                                                    }}
+                                                    disabled={cameraSettingsLoading}
+                                                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: '#1a1a2e', color: 'white', fontSize: '13px' }}
+                                                >
+                                                    {isoValues.available.length > 0 ? (
+                                                        isoValues.available.map(v => <option key={v} value={v}>{v}</option>)
+                                                    ) : (
+                                                        <option>{isoValues.current || 'Loading...'}</option>
+                                                    )}
+                                                </select>
+                                            </div>
+
+                                            {/* Aperture */}
+                                            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
+                                                <label style={{ display: 'block', fontSize: '12px', color: '#fca5a5', marginBottom: '4px', fontWeight: 'bold' }}>Aperture</label>
+                                                <select
+                                                    value={apertureValues.current}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value
+                                                        setApertureValues(prev => ({ ...prev, current: val }))
+                                                        await window.api.camera.setProperty('aperture', val)
+                                                    }}
+                                                    disabled={cameraSettingsLoading}
+                                                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: '#1a1a2e', color: 'white', fontSize: '13px' }}
+                                                >
+                                                    {apertureValues.available.length > 0 ? (
+                                                        apertureValues.available.map(v => <option key={v} value={v}>{v}</option>)
+                                                    ) : (
+                                                        <option>{apertureValues.current || 'Loading...'}</option>
+                                                    )}
+                                                </select>
+                                            </div>
+
+                                            {/* Shutter Speed */}
+                                            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
+                                                <label style={{ display: 'block', fontSize: '12px', color: '#fca5a5', marginBottom: '4px', fontWeight: 'bold' }}>Shutter Speed</label>
+                                                <select
+                                                    value={shutterValues.current}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value
+                                                        setShutterValues(prev => ({ ...prev, current: val }))
+                                                        await window.api.camera.setProperty('shutterspeed', val)
+                                                    }}
+                                                    disabled={cameraSettingsLoading}
+                                                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: '#1a1a2e', color: 'white', fontSize: '13px' }}
+                                                >
+                                                    {shutterValues.available.length > 0 ? (
+                                                        shutterValues.available.map(v => <option key={v} value={v}>{v}</option>)
+                                                    ) : (
+                                                        <option>{shutterValues.current || 'Loading...'}</option>
+                                                    )}
+                                                </select>
+                                            </div>
+
+                                            {/* White Balance */}
+                                            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
+                                                <label style={{ display: 'block', fontSize: '12px', color: '#fca5a5', marginBottom: '4px', fontWeight: 'bold' }}>White Balance</label>
+                                                <select
+                                                    value={wbValues.current}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value
+                                                        setWbValues(prev => ({ ...prev, current: val }))
+                                                        await window.api.camera.setProperty('whitebalance', val)
+                                                    }}
+                                                    disabled={cameraSettingsLoading}
+                                                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: '#1a1a2e', color: 'white', fontSize: '13px' }}
+                                                >
+                                                    {wbValues.available.length > 0 ? (
+                                                        wbValues.available.map(v => <option key={v} value={v}>{v}</option>)
+                                                    ) : (
+                                                        <option>{wbValues.current || 'Loading...'}</option>
+                                                    )}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Action Buttons */}
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                        <button
+                                            disabled={!cameraConnected}
+                                            onClick={async () => {
+                                                setCaptureTestResult('⏳ Capturing...')
+                                                try {
+                                                    const result = await window.api.camera.capture('admin_test')
+                                                    if (result.success && result.data?.success) {
+                                                        setCaptureTestResult('✅ Capture berhasil! 📸')
+                                                    } else {
+                                                        setCaptureTestResult('❌ Gagal: ' + (result.data?.error || result.error || 'Unknown'))
+                                                    }
+                                                } catch (e: any) {
+                                                    setCaptureTestResult('❌ Error: ' + e.message)
+                                                }
+                                            }}
+                                            style={{ padding: '10px 20px', background: cameraConnected ? '#ef4444' : '#444', color: 'white', border: 'none', borderRadius: '8px', cursor: cameraConnected ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '14px' }}
+                                        >
+                                            📸 TEST CAPTURE
+                                        </button>
+
+                                        <button
+                                            disabled={!cameraConnected}
+                                            onClick={async () => {
+                                                setCameraSettingsLoading(true)
+                                                try {
+                                                    const [iso, aperture, shutter, wb] = await Promise.all([
+                                                        window.api.camera.getAvailableValues('iso'),
+                                                        window.api.camera.getAvailableValues('aperture'),
+                                                        window.api.camera.getAvailableValues('shutterspeed'),
+                                                        window.api.camera.getAvailableValues('whitebalance')
+                                                    ])
+                                                    if (iso.success && iso.data) setIsoValues(iso.data)
+                                                    if (aperture.success && aperture.data) setApertureValues(aperture.data)
+                                                    if (shutter.success && shutter.data) setShutterValues(shutter.data)
+                                                    if (wb.success && wb.data) setWbValues(wb.data)
+                                                } catch (e) { console.error('Refresh settings error:', e) }
+                                                setCameraSettingsLoading(false)
+                                            }}
+                                            style={{ padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: cameraConnected ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '14px' }}
+                                        >
+                                            🔄 Refresh Settings
+                                        </button>
+
+                                        {liveViewActive ? (
+                                            <button
+                                                onClick={async () => {
+                                                    if (liveViewTimerRef.current) { clearInterval(liveViewTimerRef.current); liveViewTimerRef.current = null }
+                                                    await window.api.camera.stopLiveView()
+                                                    setLiveViewActive(false)
+                                                    setLiveViewUrl(null)
+                                                }}
+                                                style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+                                            >
+                                                🔴 Stop Live View
+                                            </button>
+                                        ) : cameraConnected ? (
+                                            <button
+                                                onClick={async () => {
+                                                    await window.api.camera.startLiveView()
+                                                    const urlResult = await window.api.camera.getLiveViewUrl()
+                                                    if (urlResult.success && urlResult.data) {
+                                                        setLiveViewUrl(urlResult.data)
+                                                        setLiveViewActive(true)
+                                                        if (liveViewTimerRef.current) clearInterval(liveViewTimerRef.current)
+                                                        liveViewTimerRef.current = setInterval(() => setLiveViewKey(k => k + 1), 200)
+                                                    }
+                                                }}
+                                                style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+                                            >
+                                                📹 Start Live View
+                                            </button>
+                                        ) : null}
+                                    </div>
+
+                                    {/* Result Message */}
+                                    {captureTestResult && (
+                                        <div style={{ marginTop: '10px', padding: '10px', borderRadius: '8px', background: captureTestResult.startsWith('✅') ? 'rgba(16,185,129,0.1)' : captureTestResult.startsWith('⏳') ? 'rgba(59,130,246,0.1)' : 'rgba(239,68,68,0.1)', color: captureTestResult.startsWith('✅') ? '#10b981' : captureTestResult.startsWith('⏳') ? '#60a5fa' : '#ef4444', fontSize: '13px' }}>
+                                            {captureTestResult}
+                                        </div>
+                                    )}
+
+                                    {/* Setup instructions */}
+                                    {!cameraConnected && (
+                                        <div style={{ marginTop: '15px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '12px', color: '#9ca3af', lineHeight: '1.8' }}>
+                                            <b style={{ color: '#fca5a5' }}>📋 Setup Awal (1x saja):</b><br/>
+                                            1. Hubungkan kamera Canon via USB<br/>
+                                            2. Buka <b>CameraControl.exe</b> (digiCamControl) → pastikan kamera terdeteksi<br/>
+                                            3. Buka <b>Settings → Webserver</b> → centang <b>"Use web server"</b><br/>
+                                            4. Restart CameraControl.exe<br/>
+                                            5. Klik tombol <b>"Connect Camera"</b> di atas
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

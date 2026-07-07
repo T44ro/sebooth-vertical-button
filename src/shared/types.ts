@@ -17,6 +17,18 @@ export interface CaptureResult {
     timestamp: number
 }
 
+export interface CameraSettings {
+    iso?: string
+    aperture?: string
+    shutterSpeed?: string
+    whiteBalance?: string
+}
+
+export interface CameraPropertyValues {
+    current: string
+    available: string[]
+}
+
 export interface CameraHandler {
     listCameras(): Promise<CameraDevice[]>
     connect(cameraId: string): Promise<boolean>

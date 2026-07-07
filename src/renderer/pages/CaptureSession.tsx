@@ -55,6 +55,11 @@ function CaptureSession(): JSX.Element {
     const streamRef = useRef<MediaStream | null>(null)
     const viewfinderRef = useRef<HTMLDivElement>(null)
 
+    // digiCamControl Live View refs
+    const [digicamLiveViewUrl, setDigicamLiveViewUrl] = useState<string | null>(null)
+    const [digicamLiveViewKey, setDigicamLiveViewKey] = useState(0)
+    const digicamLiveViewTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
     // Live Photo video recording refs
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const videoChunksRef = useRef<Blob[]>([])
@@ -183,8 +188,46 @@ function CaptureSession(): JSX.Element {
             if (countdownRef.current) {
                 clearInterval(countdownRef.current)
             }
+            // Stop digiCamControl live view
+            if (digicamLiveViewTimer.current) {
+                clearInterval(digicamLiveViewTimer.current)
+            }
+            if (config.cameraMode === 'ptp') {
+                window.api.camera.stopLiveView().catch(() => {})
+            }
         }
     }, [])
+
+    // Auto-start digiCamControl live view when in PTP mode
+    useEffect(() => {
+        if (config.cameraMode === 'ptp') {
+            const startDigicamLiveView = async () => {
+                try {
+                    await window.api.camera.startLiveView()
+                    const urlResult = await window.api.camera.getLiveViewUrl()
+                    if (urlResult.success && urlResult.data) {
+                        setDigicamLiveViewUrl(urlResult.data)
+                        // Poll for new frames
+                        if (digicamLiveViewTimer.current) clearInterval(digicamLiveViewTimer.current)
+                        digicamLiveViewTimer.current = setInterval(() => {
+                            setDigicamLiveViewKey(k => k + 1)
+                        }, 150)
+                    }
+                } catch (e) {
+                    console.error('[CaptureSession] Failed to start digiCamControl live view:', e)
+                }
+                setIsLoadingCamera(false)
+            }
+            startDigicamLiveView()
+        }
+
+        return () => {
+            if (digicamLiveViewTimer.current) {
+                clearInterval(digicamLiveViewTimer.current)
+                digicamLiveViewTimer.current = null
+            }
+        }
+    }, [config.cameraMode])
 
     // Find next empty slot (skips duplicate slots)
     const getNextEmptySlot = useCallback(() => {
@@ -600,14 +643,30 @@ function CaptureSession(): JSX.Element {
                     style={{ aspectRatio: slotAspectRatio }}
                     ref={viewfinderRef}
                 >
-                    {/* Camera Feed */}
-                    <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className={styles.video}
-                    />
+                    {/* Camera Feed — Webcam or digiCamControl Live View */}
+                    {config.cameraMode === 'ptp' && digicamLiveViewUrl ? (
+                        <img
+                            key={digicamLiveViewKey}
+                            src={`${digicamLiveViewUrl}?t=${digicamLiveViewKey}`}
+                            alt="Live View"
+                            className={styles.video}
+                            style={{ objectFit: 'cover' }}
+                            onError={(e) => {
+                                (e.target as HTMLImageElement).style.opacity = '0.3'
+                            }}
+                            onLoad={(e) => {
+                                (e.target as HTMLImageElement).style.opacity = '1'
+                            }}
+                        />
+                    ) : (
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className={styles.video}
+                        />
+                    )}
 
                     {/* Loading Overlay */}
                     {isLoadingCamera && (
