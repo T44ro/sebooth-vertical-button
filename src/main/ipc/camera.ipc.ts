@@ -68,7 +68,7 @@ export function registerCameraHandlers(ipcMain: IpcMain): void {
     })
 
     // Capture a photo
-    ipcMain.handle('camera:capture', async (_, slotId?: string): Promise<APIResponse<CaptureResult>> => {
+    ipcMain.handle('camera:capture', async (_, slotId?: string, options?: any): Promise<APIResponse<CaptureResult>> => {
         try {
             const handlerName = cameraHandler.constructor.name
             console.log(`[Camera IPC] Capture requested. Active handler: ${handlerName}`)
@@ -76,8 +76,13 @@ export function registerCameraHandlers(ipcMain: IpcMain): void {
             const filename = `capture_${slotId || uuidv4()}_${Date.now()}.jpg`
             const outputPath = join(getTempPath(), filename)
 
-            const result = await cameraHandler.capture(outputPath)
+            const result = await (cameraHandler as any).capture(outputPath, options)
             console.log(`[Camera IPC] Capture result:`, { success: result.success, imagePath: result.imagePath, error: result.error })
+
+            if (!result.success && cameraHandler.constructor.name === 'GPhotoCamera' && result.error?.includes('not found')) {
+                console.warn('[Camera IPC] GPhoto fallback could not capture; returning actionable error')
+            }
+
             return { success: result.success, data: result, error: result.error }
         } catch (error) {
             const err = error as Error

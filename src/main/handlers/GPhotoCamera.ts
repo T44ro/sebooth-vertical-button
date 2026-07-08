@@ -58,7 +58,7 @@ export class GPhotoCamera extends CameraHandler {
         console.log('[Lightweight] Disconnected')
     }
 
-    async capture(outputPath: string): Promise<CaptureResult> {
+    async capture(outputPath: string, options?: any): Promise<CaptureResult> {
         try {
             const dir = dirname(outputPath)
             if (!existsSync(dir)) {

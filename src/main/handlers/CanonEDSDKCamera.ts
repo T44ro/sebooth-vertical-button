@@ -67,14 +67,22 @@ export class CanonEDSDKCamera extends CameraHandler {
     }
 
     /**
-     * Run a PowerShell script reliably using Base64 encoding.
-     * Avoids all string escaping issues with exec().
+     * Run a PowerShell script by writing it to a temporary .ps1 file.
+     * This avoids Windows command-line length limits that can occur with very large
+     * inline scripts used by the Canon capture flow.
      */
     private async runPowerShell(script: string, timeout = 30000): Promise<string> {
-        const base64Script = Buffer.from(script, 'utf16le').toString('base64')
+        const scriptDir = join(app.getPath('userData'), 'temp', 'canon_scripts')
+        if (!existsSync(scriptDir)) {
+            mkdirSync(scriptDir, { recursive: true })
+        }
+
+        const scriptPath = join(scriptDir, `canon_${Date.now()}_${Math.random().toString(16).slice(2)}.ps1`)
+        writeFileSync(scriptPath, script, 'utf8')
+
         try {
             const { stdout, stderr } = await execAsync(
-                `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${base64Script}`,
+                `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
                 { timeout, maxBuffer: 50 * 1024 * 1024 } // 50MB buffer for image data
             )
             if (stderr) {
@@ -86,17 +94,32 @@ export class CanonEDSDKCamera extends CameraHandler {
             if (error.stdout) console.error('[CanonEDSDK] stdout:', error.stdout)
             if (error.stderr) console.error('[CanonEDSDK] stderr:', error.stderr)
             throw error
+        } finally {
+            try {
+                unlinkSync(scriptPath)
+            } catch {
+                // Ignore cleanup errors
+            }
         }
     }
 
     /**
-     * Kill conflicting camera applications that hold USB lock
+     * Kill conflicting camera applications that hold USB lock.
+     * We intentionally include EOS Webcam Utility as well because it can keep the camera
+     * session busy and cause the Canon SDK to fail with "Comm Port Is In Use".
      */
     private async killConflictingApps(): Promise<void> {
         const appsToKill = [
             'EOSUtility.exe',
             'EOS Utility.exe',
-            // Do NOT kill EOS Webcam Utility — it may be needed for webcam preview
+            'EOSWebcamUtility.exe',
+            'CanonCameraWindow.exe',
+            'CameraWindow.exe',
+            'RemoteShooting.exe',
+            'WiaDriverTool.exe',
+            'digiCamControl.exe',
+            'CameraControl.exe',
+            'CameraControlCmd.exe'
         ]
 
         for (const appName of appsToKill) {
@@ -107,6 +130,40 @@ export class CanonEDSDKCamera extends CameraHandler {
             } catch {
                 // App not running — ignore
             }
+        }
+
+        try {
+            await execAsync('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -match \"(EOS|Canon|CameraControl|digiCam|Wia)\" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"', { timeout: 10000 })
+            console.log('[CanonEDSDK] Cleared extra Canon-related Windows processes')
+        } catch {
+            // Ignore cleanup errors
+        }
+    }
+
+    private isPortInUseError(message: string): boolean {
+        const normalized = message.toLowerCase()
+        return normalized.includes('comm port is in use')
+            || normalized.includes('failed to open session')
+            || normalized.includes('device is in use')
+            || normalized.includes('already open')
+    }
+
+    private async waitForCameraRelease(retries = 3): Promise<void> {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            await this.killConflictingApps()
+            await this.resetCanonUsbDevice()
+            if (attempt < retries) {
+                await new Promise(resolve => setTimeout(resolve, 1500 * attempt))
+            }
+        }
+    }
+
+    private async resetCanonUsbDevice(): Promise<void> {
+        try {
+            await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-PnpDevice -Class Camera | Where-Object { $_.FriendlyName -match 'Canon|EOS' } | ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue }"`, { timeout: 20000 })
+            console.log('[CanonEDSDK] Reset Canon USB device via PnP')
+        } catch {
+            // Ignore reset errors; not all systems expose the same PnP commands.
         }
     }
 
@@ -243,14 +300,22 @@ try {
     async connect(cameraId: string): Promise<boolean> {
         console.log(`[CanonEDSDK] Connecting to camera: ${cameraId}`)
 
-        // Kill conflicting apps first
-        await this.killConflictingApps()
+        if (this.connected && this.currentCamera?.id === cameraId) {
+            console.log('[CanonEDSDK] Camera already connected, reusing session')
+            return true
+        }
 
-        // Wait a moment for USB to be released
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        this.connected = false
+        this.currentCamera = null
+        this.detectedCameraName = ''
+        await this.waitForCameraRelease()
 
-        try {
-            const result = await this.runPowerShell(`
+        const maxAttempts = 3
+        let lastError: Error | null = null
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const result = await this.runPowerShell(`
 ${this.getEdsdkPreamble()}
 
 try {
@@ -258,54 +323,81 @@ try {
     $cameras = $framework.GetCameraCollection()
 
     if ($cameras.Count -eq 0) {
-        [Console]::WriteLine("===CANON_CONNECT_ERROR===Tidak ada kamera Canon terdeteksi. Pastikan: (1) Kabel USB terhubung, (2) Kamera ON, (3) Mode PTP aktif, (4) Tutup EOS Utility")
+        [Console]::WriteLine("===CANON_CONNECT_ERROR===Tidak ada kamera Canon terdeteksi. Pastikan: (1) Kabel USB terhubung, (2) Kamera ON, (3) Mode PTP aktif, (4) Tutup EOS Utility/EOS Webcam Utility")
         $framework.Dispose()
         exit
     }
 
-    $cam = $cameras.Item(0)
+    $index = ${cameraId.replace(/^canon_edsdk_/, '')}
+    if ([int]::TryParse($index, [ref]$index)) {
+        $cam = $cameras.Item([int]$index)
+    } else {
+        $cam = $cameras.Item(0)
+    }
+
     $name = $cam.DeviceDescription
-    
+    $hostFolder = [System.IO.Path]::GetTempPath()
+
     # Open session
-    # SavePicturesToHost sets the camera to save photos directly to PC RAM
-    $cam.SavePicturesToHost()
-    
+    # SavePicturesToHost requires both a photo folder and a temporary video folder path.
+    $cam.SavePicturesToHostAndCamera($hostFolder, $hostFolder)
+
     [Console]::WriteLine("===CANON_CONNECTED===$name")
-    
-    # Keep framework reference alive? No — PS script ends. Each operation loads fresh.
+
     $framework.Dispose()
 } catch {
     [Console]::WriteLine("===CANON_CONNECT_ERROR===$($_.Exception.Message)")
 }
 `, 20000)
 
-            console.log('[CanonEDSDK] Connect result:', result)
+                console.log('[CanonEDSDK] Connect result:', result)
 
-            if (result.includes('===CANON_CONNECTED===')) {
-                const nameMatch = result.match(/===CANON_CONNECTED===(.*)/m)
-                this.detectedCameraName = nameMatch?.[1]?.trim() || 'Canon Camera'
-                this.connected = true
-                this.currentCamera = {
-                    id: cameraId,
-                    name: `${this.detectedCameraName} (Canon EDSDK)`,
-                    port: 'USB',
-                    connected: true
+                if (result.includes('===CANON_CONNECTED===')) {
+                    const nameMatch = result.match(/===CANON_CONNECTED===(.*)/m)
+                    this.detectedCameraName = nameMatch?.[1]?.trim() || 'Canon Camera'
+                    this.connected = true
+                    this.currentCamera = {
+                        id: cameraId,
+                        name: `${this.detectedCameraName} (Canon EDSDK)`,
+                        port: 'USB',
+                        connected: true
+                    }
+                    console.log(`[CanonEDSDK] ✅ Connected: ${this.detectedCameraName}`)
+                    return true
                 }
-                console.log(`[CanonEDSDK] ✅ Connected: ${this.detectedCameraName}`)
-                return true
-            }
 
-            const errMatch = result.match(/===CANON_CONNECT_ERROR===(.*)/m)
-            const errorMsg = errMatch?.[1] || 'Unknown connection error'
-            this.connected = false
-            this.currentCamera = null
-            throw new Error(errorMsg)
-        } catch (error: any) {
-            this.connected = false
-            this.currentCamera = null
-            console.error('[CanonEDSDK] Connect error:', error.message)
-            throw error
+                const errMatch = result.match(/===CANON_CONNECT_ERROR===(.*)/m)
+                const errorMsg = errMatch?.[1] || 'Unknown connection error'
+                lastError = new Error(errorMsg)
+
+                if (attempt < maxAttempts && this.isPortInUseError(errorMsg)) {
+                    console.warn(`[CanonEDSDK] Port busy, retrying connect (${attempt}/${maxAttempts})...`)
+                    await new Promise(resolve => setTimeout(resolve, 2500 * attempt))
+                    await this.waitForCameraRelease()
+                    continue
+                }
+
+                this.connected = false
+                this.currentCamera = null
+                throw lastError
+            } catch (error: any) {
+                lastError = error
+                this.connected = false
+                this.currentCamera = null
+                console.error('[CanonEDSDK] Connect error:', error.message)
+
+                if (attempt < maxAttempts && this.isPortInUseError(error.message)) {
+                    console.warn(`[CanonEDSDK] Port busy, retrying connect (${attempt}/${maxAttempts})...`)
+                    await new Promise(resolve => setTimeout(resolve, 2500 * attempt))
+                    await this.waitForCameraRelease()
+                    continue
+                }
+
+                throw error
+            }
         }
+
+        throw lastError || new Error('Unknown connection error')
     }
 
     async disconnect(): Promise<void> {
@@ -329,7 +421,7 @@ try {
      * 5. Wait for PictureTaken event → receive image bytes
      * 6. Save to outputPath
      */
-    async capture(outputPath: string): Promise<CaptureResult> {
+    async capture(outputPath: string, options?: { allowLiveViewFallback?: boolean }): Promise<CaptureResult> {
         try {
             console.log(`[CanonEDSDK] Capturing to: ${outputPath}`)
 
@@ -343,10 +435,15 @@ try {
 
             const escapedOutputPath = outputPath.replace(/\\/g, '\\\\').replace(/'/g, "''")
 
+            const allowLV = options?.allowLiveViewFallback !== false
+            const useHostSave = allowLV
+
             const result = await this.runPowerShell(`
 ${this.getEdsdkPreamble()}
 
 $outputPath = '${escapedOutputPath}'
+$allowLV = ${allowLV ? '$true' : '$false'}
+$useHostSave = ${useHostSave ? '$true' : '$false'}
 
 try {
     $framework = New-Object Canon.Eos.Framework.EosFramework
@@ -362,8 +459,15 @@ try {
     $camName = $cam.DeviceDescription
     [Console]::WriteLine("===CAPTURE_CAMERA===$camName")
 
-    # Set save destination to Host (PC RAM, not SD card)
-    $cam.SavePicturesToHost()
+    # Set save destination to Host + Camera only when using liveview/host save
+    $hostFolder = [System.IO.Path]::GetDirectoryName($outputPath)
+    [Console]::WriteLine("===HOST_FOLDER=== $hostFolder")
+    if ($useHostSave) {
+        try { $beforeFiles = Get-ChildItem -Path $hostFolder -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Select-Object Name,LastWriteTime; [Console]::WriteLine("===HOST_BEFORE_COUNT=== $($beforeFiles.Count)") } catch { }
+        $cam.SavePicturesToHostAndCamera($hostFolder, $hostFolder)
+    } else {
+        [Console]::WriteLine("===HOST_SAVE_DISABLED===LiveView/host save disabled")
+    }
 
     # Create event synchronization objects
     $captureCompleted = New-Object System.Threading.ManualResetEvent($false)
@@ -371,10 +475,10 @@ try {
     $captureError = ""
 
     # Register PictureTaken event handler — this fires when the image arrives
-    $pictureHandler = [System.EventHandler[Canon.Eos.Framework.Eventing.EosMemoryImageEventArgs]] {
+    $pictureHandler = [System.EventHandler[Canon.Eos.Framework.Eventing.EosImageEventArgs]] {
         param($sender, $e)
         try {
-            # $e contains the image data
+            # $e contains the image data from the Canon SDK event payload
             $script:capturedImageBytes = $e.ImageData
             [Console]::WriteLine("===CAPTURE_EVENT_FIRED===ImageSize: $($e.ImageData.Length)")
         } catch {
@@ -399,29 +503,72 @@ try {
     $cam.add_PictureTaken($pictureHandler)
     
     [Console]::WriteLine("===CAPTURE_TRIGGERING===")
+    [Console]::WriteLine("===CAPTURE_OPTION_ALLOW_LV===$allowLV")
+    [Console]::WriteLine("===CAPTURE_OPTION_USE_HOST_SAVE===$useHostSave")
 
     # Try TakePictureNoAf first (faster, no autofocus delay)
+    $shutterSuccess = $false
+    $lvSaved = $false
     try {
         $cam.TakePictureNoAf()
         [Console]::WriteLine("===CAPTURE_SHUTTER_OK===TakePictureNoAf")
+        $shutterSuccess = $true
     } catch {
         # Fallback to TakePicture (with autofocus)
         [Console]::WriteLine("===CAPTURE_NOAF_FAILED===$($_.Exception.Message)")
         try {
             $cam.TakePicture()
             [Console]::WriteLine("===CAPTURE_SHUTTER_OK===TakePicture")
+            $shutterSuccess = $true
         } catch {
-            [Console]::WriteLine("===CAPTURE_ERROR===Shutter gagal: $($_.Exception.Message)")
-            $cam.remove_PictureTaken($pictureHandler)
-            $framework.Dispose()
-            exit
+            [Console]::WriteLine("===CAPTURE_ERROR_SHUTTER===$($_.Exception.Message)")
+
+            # As a last-resort fallback, try to grab a LiveView frame if available.
+            # Respect options: if allowLiveViewFallback is provided and false, skip liveview fallback to avoid forcing camera preview changes.
+            if ($allowLV -eq $false) {
+                [Console]::WriteLine("===CAPTURE_LIVEVIEW_SKIPPED===LiveView fallback disabled by options")
+            }
+            try {
+                if ($allowLV) {
+                    [Console]::WriteLine("===CAPTURE_LIVEVIEW_TRY===Starting LiveView for fallback frames")
+                    try { $cam.StartLiveView() } catch {}
+                    Start-Sleep -Milliseconds 200
+                    $lvSaved = $false
+                    for ($i = 0; $i -lt 12; $i++) {
+                        try {
+                            $lv = $cam.GetLiveViewImage()
+                            if ($lv -ne $null -and $lv.Length -gt 1000) {
+                                [System.IO.File]::WriteAllBytes($outputPath, $lv)
+                                [Console]::WriteLine("===CAPTURE_SAVED_LV===Size: $($lv.Length)")
+                                $lvSaved = $true
+                                $shutterSuccess = $true
+                                break
+                            }
+                        } catch {
+                            # ignore intermittent liveview errors
+                        }
+                        Start-Sleep -Milliseconds 500
+                    }
+                    try { $cam.StopLiveView() } catch {}
+
+                    if (-not $lvSaved) {
+                        [Console]::WriteLine("===CAPTURE_LIVEVIEW_FAILED===No liveview image returned after attempts")
+                    }
+                }
+            } catch {
+                [Console]::WriteLine("===CAPTURE_LIVEVIEW_ERROR===$($_.Exception.Message)")
+            }
         }
     }
 
-    # Wait for the image to arrive (max 15 seconds)
-    $gotImage = $captureCompleted.WaitOne(15000)
+    # Wait for the image to arrive (max 30 seconds) only if we triggered the shutter
+    $gotImage = $false
+    if ($shutterSuccess -and -not $lvSaved) {
+        $gotImage = $captureCompleted.WaitOne(30000)
+    }
 
-    $cam.remove_PictureTaken($pictureHandler)
+    # Always remove handler if it was registered
+    try { $cam.remove_PictureTaken($pictureHandler) } catch {}
 
     if ($gotImage -and $capturedImageBytes -ne $null -and $capturedImageBytes.Length -gt 1000) {
         # Save image to disk
@@ -430,7 +577,28 @@ try {
     } elseif ($captureError) {
         [Console]::WriteLine("===CAPTURE_ERROR===$captureError")
     } else {
-        [Console]::WriteLine("===CAPTURE_TIMEOUT===Image did not arrive within 15 seconds")
+        [Console]::WriteLine("===CAPTURE_TIMEOUT===Image did not arrive within 30 seconds, trying host folder poll fallback")
+
+        # Poll host folder for recently written image files as a fallback
+        try {
+            $recent = Get-ChildItem -Path $hostFolder -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($recent -and $recent.Length -gt 1000) {
+                # If the most recent file is already the output path, avoid copying onto itself
+                if ($recent.FullName -ieq $outputPath) {
+                    $size = $recent.Length
+                    [Console]::WriteLine("===CAPTURE_SAVED_POLL===AlreadyAtOutput: $($recent.FullName) Size: $size")
+                } else {
+                    Copy-Item -Path $recent.FullName -Destination $outputPath -Force
+                    $size = (Get-Item $outputPath).Length
+                    [Console]::WriteLine("===CAPTURE_SAVED_POLL===Found: $($recent.FullName) Size: $size")
+                }
+            } else {
+                [Console]::WriteLine("===CAPTURE_POLL_NONE===No recent file found in host folder")
+                try { $afterFiles = Get-ChildItem -Path $hostFolder -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Select-Object Name,LastWriteTime; [Console]::WriteLine("===HOST_AFTER_COUNT=== $($afterFiles.Count)") } catch {}
+            }
+        } catch {
+            [Console]::WriteLine("===CAPTURE_POLL_ERROR===$($_.Exception.Message)")
+        }
     }
 
     $framework.Dispose()
@@ -441,14 +609,24 @@ try {
 
             console.log('[CanonEDSDK] Capture result:', result)
 
-            if (result.includes('===CAPTURE_SAVED===')) {
+            // Treat any of the CAPTURE_SAVED markers as success (direct save, liveview save, or poll-copy)
+            if (result.includes('===CAPTURE_SAVED===') || result.includes('===CAPTURE_SAVED_LV===') || result.includes('===CAPTURE_SAVED_POLL===')) {
                 if (existsSync(outputPath)) {
-                    const sizeMatch = result.match(/===CAPTURE_SAVED===Size: (\d+)/)
-                    const fileSize = sizeMatch ? sizeMatch[1] : 'unknown'
+                    const fileSize = require('fs').statSync(outputPath).size
                     console.log(`[CanonEDSDK] ✅ Photo saved: ${outputPath} (${fileSize} bytes)`)
                     return {
                         success: true,
                         imagePath: outputPath,
+                        timestamp: Date.now()
+                    }
+                } else {
+                    // Some code paths may report saved but the file was written elsewhere; attempt to parse size from output
+                    const sizeMatch = result.match(/Size: (\d+)/)
+                    const fileSize = sizeMatch ? sizeMatch[1] : 'unknown'
+                    console.log(`[CanonEDSDK] Photo reported saved but file not found: ${outputPath} (reported ${fileSize} bytes)`)
+                    return {
+                        success: false,
+                        error: `Canon EDSDK: reported saved but file missing (${fileSize} bytes)`,
                         timestamp: Date.now()
                     }
                 }

@@ -134,7 +134,7 @@ try {
      * Capture a photo using WIA.
      * Triggers the camera shutter via ExecuteCommand, then transfers the JPEG.
      */
-    async capture(outputPath: string): Promise<CaptureResult> {
+    async capture(outputPath: string, options?: any): Promise<CaptureResult> {
         // Lazy connection: if not connected, try to find and connect to the first camera
         if (!this.connected) {
             console.log('[WIA] Not connected. Attempting lazy connection...')

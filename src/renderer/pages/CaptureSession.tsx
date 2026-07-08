@@ -167,7 +167,7 @@ function CaptureSession(): JSX.Element {
                 console.log('[CaptureSession] Re-initializing webcam for state:', captureState)
                 initWebcam()
             }
-        } else if ((captureState === 'capturing' || captureState === 'preview' || captureState === 'reviewPopup') && config.cameraMode !== 'mock') {
+        } else if ((captureState === 'capturing' || captureState === 'preview' || captureState === 'reviewPopup') && config.cameraMode !== 'mock' && !config.selectedCameraId) {
             if (streamRef.current) {
                 console.log('[CaptureSession] Stopping webcam stream to release DSLR PTP lock (state:', captureState, ')')
                 streamRef.current.getTracks().forEach(track => track.stop())
@@ -177,7 +177,7 @@ function CaptureSession(): JSX.Element {
                 }
             }
         }
-    }, [captureState, config.cameraMode, initWebcam])
+    }, [captureState, config.cameraMode, config.selectedCameraId, initWebcam])
 
     // Cleanup on unmount
     useEffect(() => {
@@ -188,11 +188,12 @@ function CaptureSession(): JSX.Element {
             if (countdownRef.current) {
                 clearInterval(countdownRef.current)
             }
-            // Stop digiCamControl live view
+            // Stop digiCamControl live view timer
             if (digicamLiveViewTimer.current) {
                 clearInterval(digicamLiveViewTimer.current)
             }
-            if (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk') {
+            // Only stop the camera live view if we did not select a dedicated preview device (capture card)
+            if (!config.selectedCameraId && (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk')) {
                 window.api.camera.stopLiveView().catch(() => {})
             }
         }
@@ -200,7 +201,8 @@ function CaptureSession(): JSX.Element {
 
     // Auto-start digiCamControl live view when in PTP mode
     useEffect(() => {
-        if (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk') {
+        // Only auto-start digiCam/EDSDK live view when no capture-card preview device is selected
+        if (!config.selectedCameraId && (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk')) {
             const startDigicamLiveView = async () => {
                 try {
                     await window.api.camera.startLiveView()
@@ -228,6 +230,14 @@ function CaptureSession(): JSX.Element {
             }
         }
     }, [config.cameraMode])
+
+    // If a specific preview device (capture card) is selected, ensure the webcam stream is initialized
+    useEffect(() => {
+        if (config.selectedCameraId) {
+            // Initialize or re-initialize webcam to use the selected device for preview
+            initWebcam().catch(err => console.warn('[CaptureSession] initWebcam error for selectedCameraId:', err))
+        }
+    }, [config.selectedCameraId, initWebcam])
 
     // Find next empty slot (skips duplicate slots)
     const getNextEmptySlot = useCallback(() => {
@@ -371,8 +381,9 @@ function CaptureSession(): JSX.Element {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const windowApi = (window as any).api;
                         if (windowApi && windowApi.camera && windowApi.camera.capture) {
-                            // Synchronously stop the webcam stream to release PTP lock on DSLR USB
-                            if (streamRef.current) {
+                            // Synchronously stop the webcam stream to release PTP lock on DSLR USB.
+                            // Do not stop the selected capture-card preview device, since it should remain active.
+                            if (!config.selectedCameraId && streamRef.current) {
                                 console.log('[CaptureSession] Stopping webcam stream tracks to release PTP USB lock');
                                 streamRef.current.getTracks().forEach(track => track.stop());
                                 streamRef.current = null;
@@ -381,7 +392,8 @@ function CaptureSession(): JSX.Element {
                                 }
                             }
                             
-                            const captureRes = await windowApi.camera.capture(slot?.id);
+                            const captureOptions = config.selectedCameraId ? { allowLiveViewFallback: false } : undefined;
+                            const captureRes = await windowApi.camera.capture(slot?.id, captureOptions);
                             if (captureRes.success && captureRes.data && captureRes.data.imagePath) {
                                 // Convert physical path to local file URL
                                 dataUrl = `file:///${captureRes.data.imagePath.replace(/\\/g, '/')}`;
@@ -644,7 +656,16 @@ function CaptureSession(): JSX.Element {
                     ref={viewfinderRef}
                 >
                     {/* Camera Feed — Webcam or digiCamControl/Canon EDSDK Live View */}
-                    {(config.cameraMode === 'ptp' || config.cameraMode === 'edsdk') && digicamLiveViewUrl ? (
+                    {/* If a preview device is selected, prefer the direct device stream. Otherwise use digiCam/EDSDK live view when available. */}
+                    {config.selectedCameraId ? (
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className={styles.video}
+                        />
+                    ) : ( (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk') && digicamLiveViewUrl ? (
                         <img
                             key={digicamLiveViewKey}
                             src={`${digicamLiveViewUrl}?t=${digicamLiveViewKey}`}
@@ -666,7 +687,7 @@ function CaptureSession(): JSX.Element {
                             muted
                             className={styles.video}
                         />
-                    )}
+                    ))}
 
                     {/* Loading Overlay */}
                     {isLoadingCamera && (

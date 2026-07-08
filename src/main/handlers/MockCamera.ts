@@ -53,7 +53,7 @@ export class MockCamera extends CameraHandler {
         this.currentCamera = null
     }
 
-    async capture(outputPath: string): Promise<CaptureResult> {
+    async capture(outputPath: string, options?: any): Promise<CaptureResult> {
         if (!this.connected) {
             return {
                 success: false,

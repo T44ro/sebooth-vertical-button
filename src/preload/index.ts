@@ -23,8 +23,8 @@ const api = {
         disconnect: (): Promise<APIResponse<void>> =>
             ipcRenderer.invoke('camera:disconnect'),
 
-        capture: (slotId?: string): Promise<APIResponse<CaptureResult>> =>
-            ipcRenderer.invoke('camera:capture', slotId),
+        capture: (slotId?: string, options?: any): Promise<APIResponse<CaptureResult>> =>
+            ipcRenderer.invoke('camera:capture', slotId, options),
 
         status: (): Promise<APIResponse<{ connected: boolean; camera: CameraDevice | null }>> =>
             ipcRenderer.invoke('camera:status'),

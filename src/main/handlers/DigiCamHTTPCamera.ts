@@ -294,7 +294,7 @@ export class DigiCamHTTPCamera extends CameraHandler {
         this.currentCamera = null
     }
 
-    async capture(outputPath: string): Promise<CaptureResult> {
+    async capture(outputPath: string, options?: any): Promise<CaptureResult> {
         try {
             await this.ensureRunning()
 
