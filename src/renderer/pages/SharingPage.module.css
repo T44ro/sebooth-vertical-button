@@ -148,36 +148,47 @@
 }
 
 :global(body.app-portrait) .title {
-    font-size: 32px !important;
+    font-size: 36px !important;
 }
 
 :global(body.app-portrait) .subtitle {
-    font-size: var(--font-size-base) !important;
-    margin-bottom: var(--spacing-lg) !important;
-    padding: 0 16px !important;
+    font-size: var(--font-size-lg) !important;
+    margin-bottom: var(--spacing-xl) !important;
+    padding: 0 20px !important;
+}
+
+:global(body.app-portrait) .qrContainer {
+    padding: var(--spacing-xl) !important;
 }
 
 :global(body.app-portrait) .qrCode {
-    width: 260px !important;
-    height: 260px !important;
-    padding: 16px !important;
+    width: 300px !important;
+    height: 300px !important;
+    padding: 20px !important;
 }
 
 :global(body.app-portrait) .bottomControls {
     position: relative !important;
     bottom: auto !important;
-    margin-top: 24px !important;
+    margin-top: 32px !important;
     display: flex !important;
     flex-direction: row !important;
     justify-content: center !important;
-    gap: 12px !important;
-    padding: 0 16px !important;
+    gap: 16px !important;
+    padding: 0 20px !important;
     width: 100% !important;
 }
 
 :global(body.app-portrait) .homeButton,
 :global(body.app-portrait) .printButton {
-    padding: var(--spacing-md) var(--spacing-lg) !important;
-    font-size: 16px !important;
+    padding: var(--spacing-md) var(--spacing-xl) !important;
+    font-size: 17px !important;
 }
+
+:global(body.app-portrait) .printButton {
+    flex: 1 !important;
+    max-width: 280px !important;
+    justify-content: center !important;
+}
+
 

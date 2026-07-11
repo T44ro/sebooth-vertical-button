@@ -805,24 +805,41 @@
 }
 
 :global(body.app-portrait) .galleryToggle {
-    width: 120px !important;
-    height: 120px !important;
+    width: 140px !important;
+    height: 140px !important;
 }
 
 :global(body.app-portrait) .galleryPanel {
-    width: 280px !important;
-    max-height: 55vh !important;
+    width: 300px !important;
+    max-height: 50vh !important;
 }
 
 :global(body.app-portrait) .countdownNumber {
-    font-size: 120px !important;
+    font-size: 140px !important;
 }
 
-:global(body.app-portrait) .reviewPopupOverlay {
-    position: absolute !important;
+:global(body.app-portrait) .reviewPopup {
+    width: 95% !important;
+    max-width: 100% !important;
+    height: 90vh !important;
 }
+
 
 :global(body.app-portrait) .floatingGallery {
-    bottom: 120px !important;
+    bottom: 100px !important;
     right: 16px !important;
-}
+}
+
+:global(body.app-portrait) .readyButton {
+    padding: var(--spacing-lg) var(--spacing-2xl) !important;
+    font-size: var(--font-size-xl) !important;
+}
+
+:global(body.app-portrait) .readyButtonContainer {
+    bottom: 24px !important;
+}
+
+:global(body.app-portrait) .controlsBar {
+    padding: var(--spacing-md) var(--spacing-lg) !important;
+}
+

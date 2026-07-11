@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import styles from './PrintQuantityModal.module.css'
 
@@ -11,6 +11,29 @@ interface PrintQuantityModalProps {
 
 export function PrintQuantityModal({ isOpen, onClose, onConfirm, initialQuantity = 2 }: PrintQuantityModalProps): JSX.Element | null {
     const [quantity, setQuantity] = useState(initialQuantity)
+
+    // Keyboard navigation when modal is open
+    useEffect(() => {
+        if (!isOpen) return
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if (e.key === '1') {
+                e.preventDefault()
+                setQuantity(prev => Math.max(2, prev - 2))
+            } else if (e.key === '3') {
+                e.preventDefault()
+                setQuantity(prev => prev + 2)
+            } else if (e.key === '2') {
+                e.preventDefault()
+                onConfirm(quantity)
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, quantity, onConfirm, onClose])
 
     if (!isOpen) return null
 
@@ -27,6 +50,7 @@ export function PrintQuantityModal({ isOpen, onClose, onConfirm, initialQuantity
         onConfirm(quantity)
         onClose()
     }
+
 
     return (
         <AnimatePresence>

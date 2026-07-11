@@ -678,7 +678,53 @@ function OutputPage(): JSX.Element {
 
     const allViewed = viewedMedia.strip && viewedMedia.gif && viewedMedia.live
 
+    // Keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if (activeMedia) {
+                // Close showcase on any key press
+                e.preventDefault()
+                setActiveMedia(null)
+                return
+            }
+
+            if (isProcessing || isUploading) return
+
+            if (allViewed) {
+                if (e.key === '1') {
+                    e.preventDefault()
+                    setActiveMedia('strip')
+                } else if (e.key === '2') {
+                    e.preventDefault()
+                    if (config.sharingMode !== 'cloud' || currentSession?.cloudSessionId) {
+                        navigate('/sharing')
+                    }
+                } else if (e.key === '3') {
+                    e.preventDefault()
+                    // Cycle between gif and live
+                    setActiveMedia(prev => prev === 'gif' ? 'live' : 'gif')
+                }
+            } else {
+                if (e.key === '1') {
+                    e.preventDefault()
+                    setActiveMedia('strip')
+                } else if (e.key === '2') {
+                    e.preventDefault()
+                    setActiveMedia('gif')
+                } else if (e.key === '3') {
+                    e.preventDefault()
+                    setActiveMedia('live')
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [activeMedia, allViewed, isProcessing, isUploading, currentSession?.cloudSessionId, config.sharingMode, navigate])
+
     return (
+
         <div className={styles.container}>
             <motion.button
                 initial={{ opacity: 0 }}

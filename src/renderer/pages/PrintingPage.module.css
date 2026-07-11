@@ -108,12 +108,22 @@
 }
 
 :global(body.app-portrait) .content {
-    min-width: 90% !important;
-    padding: var(--spacing-xl) !important;
+    min-width: 85% !important;
+    padding: var(--spacing-2xl) !important;
     text-align: center !important;
 }
 
 :global(body.app-portrait) .title {
-    font-size: 32px !important;
+    font-size: 38px !important;
 }
+
+:global(body.app-portrait) .subtitle {
+    font-size: var(--font-size-lg) !important;
+}
+
+:global(body.app-portrait) .loadingSpinner {
+    width: 64px !important;
+    height: 64px !important;
+}
+
 

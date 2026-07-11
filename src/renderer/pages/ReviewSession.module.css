@@ -443,7 +443,7 @@
 
 :global(body.app-portrait) .workspace {
     flex: 1 !important;
-    height: 50vh !important;
+    height: auto !important;
     min-height: 0 !important;
     padding: var(--spacing-md) !important;
 }
@@ -451,7 +451,7 @@
 :global(body.app-portrait) .rightSidebar {
     width: 100% !important;
     height: auto !important;
-    max-height: 45vh !important;
+    max-height: 40vh !important;
     border-left: none !important;
     border-top: 2px solid var(--clay-cream) !important;
     box-shadow: 0 -8px 28px rgba(0,0,0,0.1) !important;
@@ -466,7 +466,7 @@
     flex-direction: row !important;
     width: 100% !important;
     justify-content: space-around !important;
-    padding: 8px !important;
+    padding: 10px !important;
 }
 
 :global(body.app-portrait) .controlsSection .filterTabs {
@@ -482,8 +482,21 @@
 
 :global(body.app-portrait) .filterBtn {
     flex-shrink: 0 !important;
-    min-width: 75px !important;
+    min-width: 80px !important;
 }
+
+:global(body.app-portrait) .toolsPanel {
+    bottom: var(--spacing-lg) !important;
+    padding: var(--spacing-sm) var(--spacing-lg) !important;
+    gap: var(--spacing-md) !important;
+}
+
+:global(body.app-portrait) .nextBtn {
+    height: 52px !important;
+    font-size: var(--font-size-lg) !important;
+    padding: 0 var(--spacing-xl) !important;
+}
+
 
 .mirrorGroup {
     display: flex;

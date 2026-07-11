@@ -240,6 +240,34 @@ function PaymentGateway(): JSX.Element {
         navigate('/capture')
     }
 
+    // Keyboard navigation
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if (e.key === '1') {
+                e.preventDefault()
+                if (additionalPrints > 0) {
+                    handlePrintChange(-2)
+                }
+            } else if (e.key === '3') {
+                e.preventDefault()
+                handlePrintChange(2)
+            } else if (e.key === '2') {
+                e.preventDefault()
+                if (payment.status === 'idle') {
+                    createOrder()
+                } else if (payment.status === 'expired' || payment.status === 'failed') {
+                    setPayment({ status: 'idle', orderId: null, qrisUrl: null, transactionId: null })
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [additionalPrints, payment.status, createOrder])
+
+
     if (!activeFrame) {
         return (
             <div className={styles.container}>

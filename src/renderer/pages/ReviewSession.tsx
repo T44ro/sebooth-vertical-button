@@ -88,42 +88,7 @@ const ReviewSession: React.FC = () => {
         }
     }
 
-    const handleWheel = (e: React.WheelEvent, slotId: string) => {
-        if (selectedSlotId !== slotId) return
-        
-        const selectedSlot = sessionFrame.slots.find(s => s.id === slotId)
-        const sourceSlotId = selectedSlot?.duplicateOfSlotId || slotId
-        const photo = photos.find(p => p.slotId === sourceSlotId)
-        if (!photo) return
-        
-        const currentScale = photo.scale || 1
-        const zoomSensitivity = 0.05
-        
-        let newScale = currentScale + (e.deltaY < 0 ? zoomSensitivity : -zoomSensitivity)
-        newScale = Math.max(0.5, Math.min(newScale, 5))
-        
-        updatePhoto(sourceSlotId, { scale: newScale })
-    }
 
-    const handleZoomIn = () => {
-        if (!selectedSlotId) return
-        const selectedSlot = sessionFrame.slots.find(s => s.id === selectedSlotId)
-        const sourceSlotId = selectedSlot?.duplicateOfSlotId || selectedSlotId
-        const photo = photos.find(p => p.slotId === sourceSlotId)
-        if (!photo) return
-        const newScale = Math.min((photo.scale || 1) + 0.1, 5)
-        updatePhoto(sourceSlotId, { scale: newScale })
-    }
-
-    const handleZoomOut = () => {
-        if (!selectedSlotId) return
-        const selectedSlot = sessionFrame.slots.find(s => s.id === selectedSlotId)
-        const sourceSlotId = selectedSlot?.duplicateOfSlotId || selectedSlotId
-        const photo = photos.find(p => p.slotId === sourceSlotId)
-        if (!photo) return
-        const newScale = Math.max((photo.scale || 1) - 0.1, 0.5)
-        updatePhoto(sourceSlotId, { scale: newScale })
-    }
 
     const handleRetake = () => {
         if (!selectedSlotId) return
@@ -176,6 +141,31 @@ const ReviewSession: React.FC = () => {
             setPreviewIndex(0)
         }
     }, [isPreviewMode])
+
+    // Keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if (e.key === '1') {
+                e.preventDefault()
+                // Cycle filters
+                const currentIndex = FILTERS.findIndex(f => f.id === selectedFilter)
+                const nextIndex = (currentIndex + 1) % FILTERS.length
+                setSessionFilter(FILTERS[nextIndex].id)
+            } else if (e.key === '2') {
+                e.preventDefault()
+                navigate('/output')
+            } else if (e.key === '3') {
+                e.preventDefault()
+                setIsMirrored(!isMirrored)
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [selectedFilter, setSessionFilter, isMirrored, setIsMirrored, navigate])
+
+
 
     // Retrieve current filter style
     const currentFilterDef = FILTERS.find(f => f.id === selectedFilter);
@@ -247,7 +237,7 @@ const ReviewSession: React.FC = () => {
                                 return (
                                     <div
                                         key={slot.id}
-                                        className={`${styles.slotWrapper} ${isSelected ? styles.selected : ''}`}
+                                        className={styles.slotWrapper}
                                         style={{
                                             left: slot.x,
                                             top: slot.y,
@@ -259,7 +249,6 @@ const ReviewSession: React.FC = () => {
                                         }}
                                         data-slot-id={slot.id} // crucial for target identification
                                         onPointerDown={() => setSelectedSlotId(slot.id)}
-                                        onWheel={(e) => handleWheel(e, slot.id)}
                                     >
                                         <img
                                             key={motionKey}
@@ -290,36 +279,9 @@ const ReviewSession: React.FC = () => {
                     {/* Right Sidebar with all controls */}
                     <div className={styles.rightSidebar}>
                         <div className={styles.controlsSection}>
-                            <div className={styles.toolGroup}>
-                                <button
-                                    className={styles.toolButton}
-                                    onClick={handleZoomOut}
-                                    disabled={!selectedSlotId}
-                                    title="Zoom Out"
-                                >
-                                    -
-                                </button>
-                                <button
-                                    className={styles.toolButton}
-                                    onClick={handleZoomIn}
-                                    disabled={!selectedSlotId}
-                                    title="Zoom In"
-                                >
-                                    +
-                                </button>
-                            </div>
-
-                            <div className={styles.toolGroup}>
-                                <button
-                                    className={styles.retakeBtn}
-                                    disabled={!selectedSlotId}
-                                    onClick={handleRetake}
-                                >
-                                    📸 Retake Selected
-                                </button>
-                            </div>
-
                             <div className={styles.filterTabs}>
+
+
                                 {FILTERS.map(filter => (
                                     <button
                                         key={filter.id}

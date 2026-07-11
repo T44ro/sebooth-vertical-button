@@ -40,7 +40,7 @@ export class ConfigService {
         queueEventId: '',
         queueWebhookSecret: 'sebooth-queue-webhook-2026',
         queueApiUrl: 'https://www.sebooth.in',
-        appOrientation: 'landscape',
+        appOrientation: 'portrait',
         mirrorOutput: false
     }
 

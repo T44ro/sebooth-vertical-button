@@ -177,6 +177,19 @@ function Landing(): JSX.Element {
         }
     }
 
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+            if (e.key === '1' || e.key === '2' || e.key === '3') {
+                e.preventDefault()
+                handleStart()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [handleStart])
+
+
     const handleAdminSubmit = (e: React.FormEvent): void => {
         e.preventDefault()
         if (adminPassword === ADMIN_PASSWORD) {

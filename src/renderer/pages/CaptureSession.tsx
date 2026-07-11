@@ -155,11 +155,17 @@ function CaptureSession(): JSX.Element {
         }
     }, [config.selectedCameraId])
 
-    // Manage webcam stream based on captureState and cameraMode to prevent USB locks
+    // Initialize webcam on mount
+    useEffect(() => {
+        initWebcam()
+    }, [initWebcam])
+
+    // Re-initialize webcam after it was stopped for DSLR capture
     useEffect(() => {
         if (captureState === 'idle' || captureState === 'countdown') {
+            // Only re-init if stream was previously stopped (null) and we're not already loading
             if (!streamRef.current && !isLoadingCamera) {
-                console.log('[CaptureSession] Re-initializing webcam for state:', captureState)
+                console.log('[CaptureSession] Re-initializing webcam after capture (state:', captureState, ')')
                 initWebcam()
             }
         } else if ((captureState === 'capturing' || captureState === 'preview' || captureState === 'reviewPopup') && config.cameraMode !== 'mock') {
@@ -172,7 +178,7 @@ function CaptureSession(): JSX.Element {
                 }
             }
         }
-    }, [captureState, config.cameraMode, initWebcam])
+    }, [captureState, config.cameraMode, initWebcam, isLoadingCamera])
 
     // Cleanup on unmount
     useEffect(() => {
@@ -478,6 +484,40 @@ function CaptureSession(): JSX.Element {
             setReviewPhotoIndex(0)
         }
     }, [allSlotsFilled, captureState])
+
+    // Keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if (captureState === 'idle') {
+                if (e.key === '1' || e.key === '2' || e.key === '3') {
+                    e.preventDefault()
+                    handleReady()
+                }
+            } else if (captureState === 'reviewPopup') {
+                const filledSlots = captureSlots.filter(slot =>
+                    photos.some(p => p.slotId === slot.id)
+                )
+
+                if (e.key === '1') {
+                    e.preventDefault()
+                    handleRetakeFromPopup()
+                } else if (e.key === '2') {
+                    e.preventDefault()
+                    handleContinueToReview()
+                } else if (e.key === '3') {
+                    e.preventDefault()
+                    if (filledSlots.length > 0) {
+                        setReviewPhotoIndex(prev => (prev < filledSlots.length - 1 ? prev + 1 : 0))
+                    }
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [captureState, photos, captureSlots, reviewPhotoIndex])
+
 
     // Navigate to processing
     const handleDone = (): void => {
@@ -801,112 +841,112 @@ function CaptureSession(): JSX.Element {
                         </motion.div>
                     )}
                 </AnimatePresence>
-
-                {/* Review Popup */}
-                <AnimatePresence>
-                    {captureState === 'reviewPopup' && (
-                        <motion.div
-                            className={styles.reviewPopupOverlay}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                        >
-                            <motion.div
-                                className={styles.reviewPopup}
-                                initial={{ scale: 0.8, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.8, opacity: 0 }}
-                            >
-                                <div className={styles.reviewPopupHeader}>
-                                    <h3>Review Your Photos</h3>
-                                    <p className={styles.swipeHint}>Swipe or use buttons to navigate</p>
-                                </div>
-
-                                <div className={styles.reviewPopupPhoto}>
-                                    {(() => {
-                                        const filledSlots = captureSlots.filter(slot =>
-                                            photos.some(p => p.slotId === slot.id)
-                                        )
-                                        const currentSlot = filledSlots[reviewPhotoIndex]
-                                        const photo = currentSlot ? photos.find(p => p.slotId === (currentSlot.duplicateOfSlotId || currentSlot.id)) : null
-
-                                        return photo ? (
-                                            <div className={styles.photoWrapper}>
-                                                <motion.div
-                                                    className={styles.photoContainer}
-                                                    drag="x"
-                                                    dragConstraints={{ left: 0, right: 0 }}
-                                                    dragElastic={0.2}
-                                                    onDragEnd={(event, info) => {
-                                                        const threshold = 100;
-                                                        if (info.offset.x > threshold) {
-                                                            handlePrevPhoto();
-                                                        } else if (info.offset.x < -threshold) {
-                                                            handleNextPhoto();
-                                                        }
-                                                    }}
-                                                    initial={{ opacity: 0, scale: 0.8 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    exit={{ opacity: 0, scale: 0.8 }}
-                                                    transition={{ duration: 0.3 }}
-                                                >
-                                                    <img src={photo.imagePath} alt={`Photo ${reviewPhotoIndex + 1}`} />
-                                                </motion.div>
-                                                
-                                                {/* Navigation buttons below the image */}
-                                                <div className={styles.navigationButtons}>
-                                                    <button 
-                                                        className={styles.navBtn} 
-                                                        onClick={handlePrevPhoto}
-                                                        disabled={reviewPhotoIndex === 0}
-                                                    >
-                                                        ‹
-                                                    </button>
-                                                    <span className={styles.photoCounter}>
-                                                        {(() => {
-                                                            const filledSlots = captureSlots.filter(slot =>
-                                                                photos.some(p => p.slotId === slot.id)
-                                                            )
-                                                            return `${reviewPhotoIndex + 1}/${filledSlots.length}`
-                                                        })()}
-                                                    </span>
-                                                    <button 
-                                                        className={styles.navBtn} 
-                                                        onClick={handleNextPhoto}
-                                                        disabled={(() => {
-                                                            const filledSlots = captureSlots.filter(slot =>
-                                                                photos.some(p => p.slotId === slot.id)
-                                                            )
-                                                            return reviewPhotoIndex >= filledSlots.length - 1
-                                                        })()}
-                                                    >
-                                                        ›
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ) : null
-                                    })()}
-                                </div>
-
-                                <div className={styles.reviewPopupControls}>
-                                    <button
-                                        className={styles.retakeBtn}
-                                        onClick={handleRetakeFromPopup}
-                                    >
-                                        📸 Retake This Photo
-                                    </button>
-                                    <button
-                                        className={styles.continueBtn}
-                                        onClick={handleContinueToReview}
-                                    >
-                                        Continue to Edit ✨
-                                    </button>
-                                </div>
-                            </motion.div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
             </div>
+
+            {/* Review Popup */}
+            <AnimatePresence>
+                {captureState === 'reviewPopup' && (
+                    <motion.div
+                        className={styles.reviewPopupOverlay}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        <motion.div
+                            className={styles.reviewPopup}
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.8, opacity: 0 }}
+                        >
+                            <div className={styles.reviewPopupHeader}>
+                                <h3>Review Your Photos</h3>
+                                <p className={styles.swipeHint}>Swipe or use buttons to navigate</p>
+                            </div>
+
+                            <div className={styles.reviewPopupPhoto}>
+                                {(() => {
+                                    const filledSlots = captureSlots.filter(slot =>
+                                        photos.some(p => p.slotId === slot.id)
+                                    )
+                                    const currentSlot = filledSlots[reviewPhotoIndex]
+                                    const photo = currentSlot ? photos.find(p => p.slotId === (currentSlot.duplicateOfSlotId || currentSlot.id)) : null
+
+                                    return photo ? (
+                                        <div className={styles.photoWrapper}>
+                                            <motion.div
+                                                className={styles.photoContainer}
+                                                drag="x"
+                                                dragConstraints={{ left: 0, right: 0 }}
+                                                dragElastic={0.2}
+                                                onDragEnd={(event, info) => {
+                                                    const threshold = 100;
+                                                    if (info.offset.x > threshold) {
+                                                        handlePrevPhoto();
+                                                    } else if (info.offset.x < -threshold) {
+                                                        handleNextPhoto();
+                                                    }
+                                                }}
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                transition={{ duration: 0.3 }}
+                                            >
+                                                <img src={photo.imagePath} alt={`Photo ${reviewPhotoIndex + 1}`} />
+                                            </motion.div>
+                                            
+                                            {/* Navigation buttons below the image */}
+                                            <div className={styles.navigationButtons}>
+                                                <button 
+                                                    className={styles.navBtn} 
+                                                    onClick={handlePrevPhoto}
+                                                    disabled={reviewPhotoIndex === 0}
+                                                >
+                                                    ‹
+                                                </button>
+                                                <span className={styles.photoCounter}>
+                                                    {(() => {
+                                                        const filledSlots = captureSlots.filter(slot =>
+                                                            photos.some(p => p.slotId === slot.id)
+                                                        )
+                                                        return `${reviewPhotoIndex + 1}/${filledSlots.length}`
+                                                    })()}
+                                                </span>
+                                                <button 
+                                                    className={styles.navBtn} 
+                                                    onClick={handleNextPhoto}
+                                                    disabled={(() => {
+                                                        const filledSlots = captureSlots.filter(slot =>
+                                                            photos.some(p => p.slotId === slot.id)
+                                                        )
+                                                        return reviewPhotoIndex >= filledSlots.length - 1
+                                                    })()}
+                                                >
+                                                    ›
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : null
+                                })()}
+                            </div>
+
+                            <div className={styles.reviewPopupControls}>
+                                <button
+                                    className={styles.retakeBtn}
+                                    onClick={handleRetakeFromPopup}
+                                >
+                                    📸 Retake This Photo
+                                </button>
+                                <button
+                                    className={styles.continueBtn}
+                                    onClick={handleContinueToReview}
+                                >
+                                    Continue to Edit ✨
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <ConfirmBackHomeModal
                 isOpen={isConfirmModalOpen}

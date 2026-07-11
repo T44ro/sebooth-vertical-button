@@ -175,10 +175,20 @@
 
 :global(body.app-portrait) .frameGrid {
     grid-template-columns: 1fr 1fr !important;
-    gap: 16px !important;
-    padding: 16px !important;
+    gap: 20px !important;
+    padding: 20px !important;
+    max-width: 100% !important;
+}
+
+:global(body.app-portrait) .header {
+    padding: var(--spacing-md) var(--spacing-lg) !important;
 }
 
 :global(body.app-portrait) .header h1 {
-    font-size: 20px !important;
-}
+    font-size: 22px !important;
+}
+
+:global(body.app-portrait) .content {
+    padding: var(--spacing-md) var(--spacing-lg) !important;
+}
+

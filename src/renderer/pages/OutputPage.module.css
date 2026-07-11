@@ -269,38 +269,59 @@
 
 :global(body.app-portrait) .buttonsContainer {
     flex-direction: column !important;
-    gap: 16px !important;
+    gap: 20px !important;
     width: 100% !important;
     align-items: center !important;
+    padding: 0 24px !important;
 }
 
 :global(body.app-portrait) .mediaButton {
-    width: 90% !important;
-    height: 100px !important;
+    width: 85% !important;
+    height: 120px !important;
     flex-direction: row !important;
-    gap: 20px !important;
-    padding: 0 20px !important;
+    gap: 24px !important;
+    padding: 0 28px !important;
 }
 
 :global(body.app-portrait) .buttonIcon {
-    width: 60px !important;
-    height: 60px !important;
+    width: 70px !important;
+    height: 70px !important;
     margin-bottom: 0 !important;
 }
 
 :global(body.app-portrait) .buttonText {
-    font-size: 18px !important;
+    font-size: 20px !important;
+}
+
+:global(body.app-portrait) .showcaseContainer {
+    padding: 24px !important;
 }
 
 :global(body.app-portrait) .showcaseHeader {
     top: 20px !important;
-    padding: 0 20px !important;
+    padding: 0 24px !important;
+}
+
+:global(body.app-portrait) .showcaseTitle {
+    font-size: 22px !important;
+}
+
+:global(body.app-portrait) .mediaWrapper {
+    height: 70vh !important;
 }
 
 :global(body.app-portrait) .nextButton {
-    right: 20px !important;
-    bottom: 20px !important;
-    padding: var(--spacing-md) var(--spacing-lg) !important;
-    font-size: 16px !important;
+    right: 24px !important;
+    bottom: 24px !important;
+    padding: var(--spacing-md) var(--spacing-xl) !important;
+    font-size: 18px !important;
 }
+
+:global(body.app-portrait) .viewedCheck {
+    top: 10px !important;
+    right: 10px !important;
+    width: 28px !important;
+    height: 28px !important;
+}
+
 

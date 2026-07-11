@@ -522,11 +522,54 @@
 }
 
 :global(body.app-portrait) .ticketNumber {
-    font-size: 80px !important;
+    font-size: 100px !important;
+}
+
+:global(body.app-portrait) .calledLabel {
+    font-size: 16px !important;
+}
+
+:global(body.app-portrait) .ticketName {
+    font-size: 24px !important;
+}
+
+:global(body.app-portrait) .calledInstruction {
+    font-size: 20px !important;
 }
 
 :global(body.app-portrait) .startButton {
-    padding: 16px 32px !important;
-    font-size: 18px !important;
+    padding: 18px 48px !important;
+    font-size: 20px !important;
 }
+
+:global(body.app-portrait) .idleTitle {
+    font-size: 28px !important;
+}
+
+:global(body.app-portrait) .idleIcon {
+    width: 100px !important;
+    height: 100px !important;
+    font-size: 40px !important;
+}
+
+:global(body.app-portrait) .statsBar {
+    flex-direction: row !important;
+    gap: 16px !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+}
+
+:global(body.app-portrait) .statItem {
+    min-width: 100px !important;
+    padding: 12px 16px !important;
+}
+
+:global(body.app-portrait) .qrCodeWrapper {
+    padding: 20px !important;
+}
+
+:global(body.app-portrait) .qrCountdown {
+    font-size: 40px !important;
+}
+
 

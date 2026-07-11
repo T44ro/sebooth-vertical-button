@@ -12,6 +12,7 @@ function FrameSelection(): JSX.Element {
     const { config } = useAppConfig()
     const { endSession } = useSessionStore()
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+    const [focusedIndex, setFocusedIndex] = useState(0)
 
     // Clear any existing session when entering frame selection
     // This prevents old photos from persisting after timer timeout
@@ -47,6 +48,31 @@ function FrameSelection(): JSX.Element {
     const handleTimeout = (): void => {
         navigate('/')
     }
+
+    // Keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+            if (displayFrames.length === 0) return
+
+            if (e.key === '1') {
+                e.preventDefault()
+                setFocusedIndex(prev => (prev > 0 ? prev - 1 : displayFrames.length - 1))
+            } else if (e.key === '3') {
+                e.preventDefault()
+                setFocusedIndex(prev => (prev < displayFrames.length - 1 ? prev + 1 : 0))
+            } else if (e.key === '2') {
+                e.preventDefault()
+                const selected = displayFrames[focusedIndex]
+                if (selected) {
+                    handleSelectFrame(selected.id)
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [displayFrames, focusedIndex])
+
 
     return (
         <motion.div
@@ -86,6 +112,10 @@ function FrameSelection(): JSX.Element {
                                 key={frame.id}
                                 className={styles.frameCard}
                                 onClick={() => handleSelectFrame(frame.id)}
+                                style={{
+                                    outline: index === focusedIndex ? '4px solid var(--clay-yellow)' : 'none',
+                                    outlineOffset: '-4px'
+                                }}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.1 }}

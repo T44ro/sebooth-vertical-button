@@ -134,7 +134,26 @@ function SharingPage(): JSX.Element {
         }
     }
 
+    // Keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+            if (isPrintModalOpen || isConfirmModalOpen) return
+
+            if (e.key === '1') {
+                e.preventDefault()
+                handleHome()
+            } else if (e.key === '2') {
+                e.preventDefault()
+                handlePrint()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isPrintModalOpen, isConfirmModalOpen, handleHome])
+
     return (
+
         <div className={styles.container}>
             <motion.h1 
                 initial={{ y: -50, opacity: 0 }}

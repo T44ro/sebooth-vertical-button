@@ -208,3 +208,23 @@
         font-size: 14px;
     }
 }
+
+/* ── PORTRAIT MODE OVERRIDES ── */
+:global(body.app-portrait) .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+}
+
+:global(body.app-portrait) .content {
+    padding: 20px !important;
+}
+
+:global(body.app-portrait) .mediaContainer {
+    max-width: 100% !important;
+}
+
+:global(body.app-portrait) .photosGrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+}

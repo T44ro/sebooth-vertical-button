@@ -219,7 +219,7 @@ function QueueDisplay(): JSX.Element {
             console.log('[QueueDisplay] Ticket status is in_session, auto-dismissing QR')
             handleQRDismiss()
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showQR, currentTicket?.status])
 
     const handleFallbackStart = async () => {
@@ -243,6 +243,35 @@ function QueueDisplay(): JSX.Element {
         startSession(frameId)
         navigate('/frames')
     }
+
+    // ── Determine display state ──
+    const isCalled = currentTicket?.status === 'called'
+
+    // Keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if (showQR) {
+                if (e.key === '1' || e.key === '2' || e.key === '3') {
+                    e.preventDefault()
+                    handleQRDismiss()
+                }
+            } else {
+                if (e.key === '1' || e.key === '2' || e.key === '3') {
+                    e.preventDefault()
+                    if (isCalled) {
+                        handleStartSession()
+                    } else {
+                        handleFallbackStart()
+                    }
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showQR, isCalled, handleQRDismiss, handleStartSession, handleFallbackStart])
+
 
     // ── Admin Hold Gesture ──
     const handleAdminHoldStart = useCallback(() => {
@@ -283,8 +312,7 @@ function QueueDisplay(): JSX.Element {
         return `${m}:${s.toString().padStart(2, '0')}`
     }
 
-    // ── Determine display state ──
-    const isCalled = currentTicket?.status === 'called'
+
 
     return (
         <motion.div
