@@ -14,7 +14,8 @@
     font-family: var(--font-family);
 }
 
-.container:has(.liveCameraBackground) {
+.container.hasLiveCam,
+.container.hasCustomBg {
     background: none !important;
     background-color: transparent !important;
     background-image: none !important;
@@ -38,6 +39,23 @@
     border: none !important;
 }
 
+/* ── CUSTOM BACKGROUND ── */
+.customBackground {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    object-fit: cover;
+    z-index: 1 !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+}
+
 /* Overlay untuk membuat content terlihat di atas live camera */
 .container::before {
     content: '';
@@ -55,13 +73,15 @@
     transition: opacity 0.3s ease;
 }
 
-.container:has(.liveCameraBackground)::before {
+.container.hasLiveCam::before,
+.container.hasCustomBg::before {
     opacity: 0.4;
     z-index: 2;
 }
 
-.container:has(.liveCameraBackground) .illustrationWrap {
-    display: none;
+.container.hasLiveCam .illustrationWrap,
+.container.hasCustomBg .illustrationWrap {
+    display: none !important;
 }
 
 /* ── TOP NAVBAR ── */
@@ -732,6 +752,7 @@
 }
 
 :global(body.app-portrait) .liveCameraBackground,
+:global(body.app-portrait) .customBackground,
 :global(body.app-portrait) .container::before,
 :global(body.app-portrait) .modalOverlay {
     position: absolute !important;

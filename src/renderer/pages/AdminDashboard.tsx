@@ -507,6 +507,82 @@ function AdminDashboard(): JSX.Element {
         }
     }
 
+    // Handle custom background upload
+    const handleBgUpload = async (mode: 'landscape' | 'portrait'): Promise<void> => {
+        if (!(window as any).api) {
+            alert('Background customization is only available when configuring directly on the photobooth machine.')
+            return
+        }
+
+        const result = await (window as any).api.system.openFileDialog({
+            title: `Select Custom ${mode === 'landscape' ? 'Landscape' : 'Portrait'} Background`,
+            filters: [{ name: 'Images & Videos', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'webm', 'mov'] }]
+        })
+
+        if (result.success && result.data && result.data.length > 0) {
+            const sourcePath = result.data[0]
+            const extension = sourcePath.split('.').pop()?.toLowerCase() || ''
+            const isVideo = ['mp4', 'webm', 'mov'].includes(extension)
+            const type: 'image' | 'video' = isVideo ? 'video' : 'image'
+
+            try {
+                const userDataPathRes = await (window as any).api.system.getUserDataPath()
+                if (userDataPathRes.success && userDataPathRes.data) {
+                    const destFolder = `${userDataPathRes.data}/backgrounds`
+                    const fileName = `custom_bg_${mode}_${Date.now()}.${extension}`
+                    const destPath = `${destFolder}/${fileName}`
+                    
+                    const copyRes = await (window as any).api.system.copyFile(sourcePath, destPath)
+                    if (copyRes.success) {
+                        if (mode === 'landscape') {
+                            updateConfig({
+                                customBgLandscape: destPath,
+                                customBgLandscapeType: type
+                            })
+                        } else {
+                            updateConfig({
+                                customBgPortrait: destPath,
+                                customBgPortraitType: type
+                            })
+                        }
+                    } else {
+                        console.error('Failed to copy custom background:', copyRes.error)
+                        alert(`Failed to copy background file: ${copyRes.error}`)
+                    }
+                }
+            } catch (e) {
+                console.error('Error during custom background upload:', e)
+                // Fallback: use sourcePath directly if file copy fails
+                if (mode === 'landscape') {
+                    updateConfig({
+                        customBgLandscape: sourcePath,
+                        customBgLandscapeType: type
+                    })
+                } else {
+                    updateConfig({
+                        customBgPortrait: sourcePath,
+                        customBgPortraitType: type
+                    })
+                }
+            }
+        }
+    }
+
+    // Handle custom background clear
+    const handleBgClear = (mode: 'landscape' | 'portrait'): void => {
+        if (mode === 'landscape') {
+            updateConfig({
+                customBgLandscape: '',
+                customBgLandscapeType: undefined
+            })
+        } else {
+            updateConfig({
+                customBgPortrait: '',
+                customBgPortraitType: undefined
+            })
+        }
+    }
+
     // Add new slot
     const handleAddSlot = (): void => {
         if (selectedFrame) {
@@ -1151,6 +1227,72 @@ function AdminDashboard(): JSX.Element {
                                         />
                                         <span>📱 Portrait (Vertical)</span>
                                     </label>
+                                </div>
+                            </div>
+
+                            <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                                <h3>🏠 Custom Home Background</h3>
+                                <p>Upload custom images or videos for the Home screen background. A landscape background will be used in Horizontal layout, and a portrait background will be used in Vertical layout. Toggling the Live Cam background on the Home screen will override these settings.</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
+                                    
+                                    {/* Landscape Custom Background */}
+                                    <div className={styles.bgSettingRow}>
+                                        <div className={styles.bgSettingInfo}>
+                                            <h4 className={styles.bgSettingTitle}>🖥️ Landscape Background (Horizontal Mode)</h4>
+                                            <span className={styles.bgSettingPath}>
+                                                {config.customBgLandscape 
+                                                    ? `Selected: ${config.customBgLandscape.split('/').pop() || config.customBgLandscape.split('\\').pop()} (${config.customBgLandscapeType})`
+                                                    : 'Default background (Cream color)'
+                                                }
+                                            </span>
+                                        </div>
+                                        <div className={styles.bgSettingActions}>
+                                            <button 
+                                                className={`${styles.bgSettingBtn} ${styles.bgSettingBtnPrimary}`}
+                                                onClick={() => handleBgUpload('landscape')}
+                                            >
+                                                Upload File
+                                            </button>
+                                            {config.customBgLandscape && (
+                                                <button 
+                                                    className={`${styles.bgSettingBtn} ${styles.bgSettingBtnDanger}`}
+                                                    onClick={() => handleBgClear('landscape')}
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Portrait Custom Background */}
+                                    <div className={styles.bgSettingRow}>
+                                        <div className={styles.bgSettingInfo}>
+                                            <h4 className={styles.bgSettingTitle}>📱 Portrait Background (Vertical Mode)</h4>
+                                            <span className={styles.bgSettingPath}>
+                                                {config.customBgPortrait 
+                                                    ? `Selected: ${config.customBgPortrait.split('/').pop() || config.customBgPortrait.split('\\').pop()} (${config.customBgPortraitType})`
+                                                    : 'Default background (Cream color)'
+                                                }
+                                            </span>
+                                        </div>
+                                        <div className={styles.bgSettingActions}>
+                                            <button 
+                                                className={`${styles.bgSettingBtn} ${styles.bgSettingBtnPrimary}`}
+                                                onClick={() => handleBgUpload('portrait')}
+                                            >
+                                                Upload File
+                                            </button>
+                                            {config.customBgPortrait && (
+                                                <button 
+                                                    className={`${styles.bgSettingBtn} ${styles.bgSettingBtnDanger}`}
+                                                    onClick={() => handleBgClear('portrait')}
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
                                 </div>
                             </div>
 

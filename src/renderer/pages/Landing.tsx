@@ -9,11 +9,23 @@ const ILLUSTRATION_SRC = './assets/landing-illustration.mp4'
 
 const ADMIN_PASSWORD = 'admin123'
 
+const formatFilePath = (p?: string): string => {
+    if (!p) return ''
+    if (p.startsWith('http') || p.startsWith('./') || p.startsWith('data:')) return p
+    const normalized = p.replace(/\\/g, '/')
+    return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+}
+
 function Landing(): JSX.Element {
     const navigate = useNavigate()
     const { cameras, selectedCamera, setCameras, selectCamera, setConnected, isConnected } = useCameraStore()
     const { frames, setActiveFrame } = useFrameStore()
     const { config } = useAppConfig()
+
+    const isPortrait = config.appOrientation === 'portrait'
+    const customBg = isPortrait ? config.customBgPortrait : config.customBgLandscape
+    const customBgType = isPortrait ? config.customBgPortraitType : config.customBgLandscapeType
+    const hasCustomBg = !!customBg
 
     const [showAdminModal, setShowAdminModal] = useState(false)
     const [adminPassword, setAdminPassword] = useState('')
@@ -204,7 +216,7 @@ function Landing(): JSX.Element {
 
     return (
         <motion.div
-            className={styles.container}
+            className={`${styles.container} ${liveCameraEnabled ? styles.hasLiveCam : ''} ${!liveCameraEnabled && hasCustomBg ? styles.hasCustomBg : ''}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -221,6 +233,26 @@ function Landing(): JSX.Element {
                         transform: 'scaleX(-1)',
                     }}
                 />
+            )}
+
+            {/* ── CUSTOM BACKGROUND (IMAGE OR VIDEO) ── */}
+            {!liveCameraEnabled && hasCustomBg && (
+                customBgType === 'video' ? (
+                    <video
+                        src={formatFilePath(customBg)}
+                        className={styles.customBackground}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                    />
+                ) : (
+                    <img
+                        src={formatFilePath(customBg)}
+                        alt="Custom Background"
+                        className={styles.customBackground}
+                    />
+                )
             )}
 
             {/* ── TOP NAV ── */}

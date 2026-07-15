@@ -149,6 +149,12 @@ export interface AppConfig {
     // Layout Settings
     appOrientation: 'landscape' | 'portrait' // Screen/App layout orientation
     mirrorOutput: boolean // Toggle to mirror output by default
+
+    // Custom Background Settings
+    customBgLandscape?: string // File path to custom landscape background
+    customBgPortrait?: string  // File path to custom portrait background
+    customBgLandscapeType?: 'image' | 'video'
+    customBgPortraitType?: 'image' | 'video'
 }
 
 export interface LUTFilter {

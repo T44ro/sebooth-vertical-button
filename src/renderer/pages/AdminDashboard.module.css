@@ -1211,3 +1211,77 @@
     cursor: pointer;
     accent-color: var(--color-accent);
 }
+
+/* Custom Background Settings Card Layout */
+.bgSettingRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    gap: var(--spacing-md);
+}
+
+.bgSettingInfo {
+    flex: 1;
+}
+
+.bgSettingTitle {
+    color: var(--color-text-primary);
+    margin: 0 0 var(--spacing-xs) 0;
+    font-size: var(--font-size-base);
+    font-weight: 600;
+}
+
+.bgSettingPath {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    display: block;
+    word-break: break-all;
+}
+
+.bgSettingActions {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-shrink: 0;
+}
+
+.bgSettingBtn {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    background: var(--color-bg-secondary);
+}
+
+.bgSettingBtn:hover {
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-hover);
+}
+
+.bgSettingBtnPrimary {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
+}
+
+.bgSettingBtnPrimary:hover {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+}
+
+.bgSettingBtnDanger {
+    background: var(--color-error);
+    color: white;
+    border-color: var(--color-error);
+}
+
+.bgSettingBtnDanger:hover {
+    opacity: 0.9;
+}
