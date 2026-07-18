@@ -2,8 +2,9 @@ import express from 'express'
 import cors from 'cors'
 import { app } from 'electron'
 import { join, basename } from 'path'
-import { existsSync, readdirSync, statSync } from 'fs'
+import { existsSync, readdirSync, statSync, writeFileSync } from 'fs'
 import { networkInterfaces } from 'os'
+import { tmpdir } from 'os'
 import { printerHandler } from './handlers/PrinterHandler'
 import { configService } from './services/ConfigService'
 
@@ -14,7 +15,7 @@ export function startLocalServer(port = 5050) {
 
     const server = express()
     server.use(cors())
-    server.use(express.json()) // To parse POST bodies
+    server.use(express.json({ limit: '50mb' })) // Increased limit for base64 image payloads from remote devices
 
     const documentsPath = app.getPath('documents')
     const sessionsDir = join(documentsPath, 'Sebooth', 'Sessions')
@@ -286,6 +287,89 @@ export function startLocalServer(port = 5050) {
         }
     })
 
+    // --- Remote Printing (Double Device) Endpoints ---
+
+    // POST /api/remote-print — Receive print job from a remote device
+    server.post('/api/remote-print', async (req, res) => {
+        const config = configService.getConfig()
+
+        // Only accept remote print jobs if this device is configured as a Print Server
+        if (!config.printServerEnabled) {
+            return res.status(403).json({
+                success: false,
+                error: 'This device is not configured as a Print Server. Enable "Print Server Mode" in Admin Dashboard.'
+            })
+        }
+
+        try {
+            const { imageData, copies, sessionId, deviceName } = req.body
+
+            if (!imageData) {
+                return res.status(400).json({ success: false, error: 'Missing imageData field' })
+            }
+
+            // Save base64 data to temp file
+            const base64Data = (imageData as string).replace(/^data:image\/\w+;base64,/, '')
+            const buffer = Buffer.from(base64Data, 'base64')
+            const tempFilePath = join(tmpdir(), `remote_print_${Date.now()}.jpg`)
+            writeFileSync(tempFilePath, buffer)
+
+            console.log(`[RemotePrint] Received job from "${deviceName || 'Unknown'}" | Session: ${sessionId} | Copies: ${copies} | File size: ${buffer.length} bytes`)
+
+            // Queue the print job using the local printer
+            const { printQueueService } = require('./services/PrintQueueService')
+            const job = printQueueService.addJob(
+                sessionId || 'remote_session',
+                tempFilePath,
+                config.printerName || 'Print to PDF',
+                copies || 1,
+                deviceName || 'Remote Device'
+            )
+
+            res.json({
+                success: true,
+                jobId: job.id,
+                message: `Print job queued successfully from ${deviceName || 'Remote Device'}`
+            })
+        } catch (error: any) {
+            console.error('[RemotePrint] Error processing remote print job:', error)
+            res.status(500).json({ success: false, error: error.message || 'Internal server error' })
+        }
+    })
+
+    // GET /api/remote-print/status — Health check for remote print clients
+    server.get('/api/remote-print/status', async (req, res) => {
+        const config = configService.getConfig()
+
+        if (!config.printServerEnabled) {
+            return res.json({
+                online: false,
+                error: 'Print Server Mode is not enabled on this device'
+            })
+        }
+
+        try {
+            const { printQueueService } = require('./services/PrintQueueService')
+            const queue = printQueueService.getQueue()
+
+            res.json({
+                online: true,
+                printerName: config.printerName || 'Not configured',
+                printerConnected: !!config.printerName && config.printerName.toLowerCase() !== 'print to pdf',
+                queueLength: queue.length,
+                deviceName: config.deviceName || 'Print Server'
+            })
+        } catch (error: any) {
+            res.json({
+                online: true,
+                printerName: config.printerName || 'Unknown',
+                printerConnected: false,
+                queueLength: 0,
+                error: error.message
+            })
+        }
+    })
+
     // 3. Admin Monitor UI Web Interface
     server.get('/monitor', (req, res) => {
         const adminHtml = `
@@ -413,13 +497,40 @@ export function startLocalServer(port = 5050) {
 
 export function getLocalIpAddress(): string | null {
     const nets = networkInterfaces()
+    const addresses: { name: string, ip: string }[] = []
+    
     for (const name of Object.keys(nets)) {
         for (const net of nets[name]!) {
             // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
             if (net.family === 'IPv4' && !net.internal) {
-                return net.address
+                addresses.push({ name, ip: net.address })
             }
         }
     }
-    return null
+
+    if (addresses.length === 0) return null
+
+    // Sort to prioritize Wi-Fi or Hotspot interfaces
+    addresses.sort((a, b) => {
+        const nameA = a.name.toLowerCase()
+        const nameB = b.name.toLowerCase()
+        
+        // Penalize virtual adapters
+        const isVirtualA = nameA.includes('vmware') || nameA.includes('virtual') || nameA.includes('veth') || nameA.includes('tailscale') || nameA.includes('zerotier') || nameA.includes('loopback')
+        const isVirtualB = nameB.includes('vmware') || nameB.includes('virtual') || nameB.includes('veth') || nameB.includes('tailscale') || nameB.includes('zerotier') || nameB.includes('loopback')
+        
+        if (isVirtualA && !isVirtualB) return 1
+        if (!isVirtualA && isVirtualB) return -1
+        
+        // Prioritize Wi-Fi and Hotspot
+        const isWifiA = nameA.includes('wi-fi') || nameA.includes('wlan') || nameA.includes('wireless') || nameA.includes('hotspot') || nameA.includes('local area connection')
+        const isWifiB = nameB.includes('wi-fi') || nameB.includes('wlan') || nameB.includes('wireless') || nameB.includes('hotspot') || nameB.includes('local area connection')
+        
+        if (isWifiA && !isWifiB) return -1
+        if (!isWifiA && isWifiB) return 1
+        
+        return 0
+    })
+
+    return addresses[0].ip
 }

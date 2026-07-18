@@ -155,6 +155,12 @@ export interface AppConfig {
     customBgPortrait?: string  // File path to custom portrait background
     customBgLandscapeType?: 'image' | 'video'
     customBgPortraitType?: 'image' | 'video'
+
+    // Remote Printing (Double Device)
+    printServerEnabled: boolean   // true = this device acts as a print server (accepts remote jobs)
+    printClientEnabled: boolean   // true = this device sends print jobs to a remote print server
+    printServerUrl: string        // URL of print server (e.g. "http://192.168.1.100:5050")
+    deviceName: string            // Device identity name (e.g. "Booth A", "Booth B")
 }
 
 export interface LUTFilter {

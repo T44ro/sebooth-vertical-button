@@ -45,7 +45,12 @@ export class ConfigService {
         customBgLandscape: '',
         customBgPortrait: '',
         customBgLandscapeType: undefined,
-        customBgPortraitType: undefined
+        customBgPortraitType: undefined,
+        // Remote Printing (Double Device)
+        printServerEnabled: false,
+        printClientEnabled: false,
+        printServerUrl: '',
+        deviceName: 'Booth A'
     }
 
     constructor() {

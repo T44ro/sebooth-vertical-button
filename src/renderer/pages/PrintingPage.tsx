@@ -80,6 +80,8 @@ function PrintingPage(): JSX.Element {
         console.log('[PrintingPage] Config:', config)
         console.log('[PrintingPage] Printer enabled:', config.printerEnabled)
         console.log('[PrintingPage] Printer name:', config.printerName)
+        console.log('[PrintingPage] Print Client enabled:', config.printClientEnabled)
+        console.log('[PrintingPage] Print Server URL:', config.printServerUrl)
 
         // Check if printing is enabled
         if (!config.printerEnabled) {
@@ -91,8 +93,8 @@ function PrintingPage(): JSX.Element {
             return
         }
 
-        // Check if printer is selected
-        if (!config.printerName) {
+        // Check if printer is selected (only needed for local print mode)
+        if (!config.printClientEnabled && !config.printerName) {
             console.log('[PrintingPage] No printer selected, skipping...')
             setError('No printer selected in settings')
             setTimeout(() => {
@@ -102,6 +104,44 @@ function PrintingPage(): JSX.Element {
         }
 
         try {
+            const compositeDataUrl = currentSession?.compositePath
+
+            if (!compositeDataUrl) {
+                setError('Failed to find composite image for printing')
+                setTimeout(() => {
+                    sendSessionCompletedAndGoHome()
+                }, 5000)
+                return
+            }
+
+            // Use the selected print quantity
+            const copies = Math.max(1, Math.round(printQuantity / 2))
+
+            // --- REMOTE PRINT MODE (Print Client) ---
+            if (config.printClientEnabled && config.printServerUrl) {
+                console.log(`[PrintingPage] REMOTE PRINT MODE — Sending ${copies} copies to Print Server: ${config.printServerUrl}`)
+
+                const result = await (window as any).api.printer.remotePrint({
+                    imageData: compositeDataUrl,
+                    copies,
+                    sessionId: currentSession!.id
+                })
+
+                console.log('[PrintingPage] Remote print result:', result)
+
+                if (!result.success) {
+                    setError(result.error || 'Remote print failed — check connection to Print Server')
+                    setTimeout(() => {
+                        sendSessionCompletedAndGoHome()
+                    }, 5000)
+                } else {
+                    setPrintCompleted(true)
+                    sendSessionCompletedAndGoHome()
+                }
+                return
+            }
+
+            // --- LOCAL PRINT MODE (Default) ---
             // Find strip in session folder
             let stripPath: string | null = null
             try {
@@ -122,43 +162,31 @@ function PrintingPage(): JSX.Element {
                 }
             }
 
-            const compositeDataUrl = currentSession?.compositePath
-            if (compositeDataUrl) {
-                // Use the selected print quantity
-                const copies = Math.max(1, Math.round(printQuantity / 2))
-                
-                console.log(`[PrintingPage] Printing ${copies} copies to printer: ${config.printerName}`)
-                console.log('[PrintingPage] Using compositePath length:', compositeDataUrl.length)
-                
-                // This promise resolves when the OS print spooler accepts the job
-                console.log('[PrintingPage] Calling window.api.printer.printWithOptions...')
-                const result = await (window as any).api.printer.printWithOptions({
-                    printerName: config.printerName,
-                    data: compositeDataUrl,
-                    copies,
-                    options: {}
-                })
-                
-                console.log('[PrintingPage] Print result:', result)
-                
-                if (!result.success) {
-                    setError(result.error || 'Print failed')
-                    // If print fails, wait a bit so user can read the error, then go home
-                    setTimeout(() => {
-                        endSession()
-                        navigate('/')
-                    }, 5000)
-                } else {
-                    // Success! Mark as completed and go home
-                    setPrintCompleted(true)
-                    sendSessionCompletedAndGoHome()
-                }
-            } else {
-                setError('Failed to find or save strip for printing')
+            console.log(`[PrintingPage] LOCAL PRINT — Printing ${copies} copies to printer: ${config.printerName}`)
+            console.log('[PrintingPage] Using compositePath length:', compositeDataUrl.length)
+            
+            // This promise resolves when the OS print spooler accepts the job
+            console.log('[PrintingPage] Calling window.api.printer.printWithOptions...')
+            const result = await (window as any).api.printer.printWithOptions({
+                printerName: config.printerName,
+                data: compositeDataUrl,
+                copies,
+                options: {}
+            })
+            
+            console.log('[PrintingPage] Print result:', result)
+            
+            if (!result.success) {
+                setError(result.error || 'Print failed')
+                // If print fails, wait a bit so user can read the error, then go home
                 setTimeout(() => {
                     endSession()
                     navigate('/')
                 }, 5000)
+            } else {
+                // Success! Mark as completed and go home
+                setPrintCompleted(true)
+                sendSessionCompletedAndGoHome()
             }
         } catch (err) {
             setError('Print failed: ' + (err as Error).message)

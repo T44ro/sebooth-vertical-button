@@ -2137,6 +2137,196 @@ function AdminDashboard(): JSX.Element {
                                 </p>
                             )}
                         </div>
+
+                        {/* Double Device — Remote Printing */}
+                        <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                            <h3>🔗 Double Device — Remote Printing</h3>
+                            <p>Connect 2 devices to share a single printer over LAN/Hotspot</p>
+
+                            {/* Device Name */}
+                            <div style={{ marginTop: '15px' }}>
+                                <label style={{ display: 'block', fontSize: '13px', color: '#9ca3af', marginBottom: '6px' }}>
+                                    Nama Device (Identitas)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={config.deviceName || 'Booth A'}
+                                    onChange={(e) => updateConfig({ deviceName: e.target.value })}
+                                    placeholder="e.g. Booth A, Booth B"
+                                    style={{
+                                        width: '100%',
+                                        maxWidth: '300px',
+                                        padding: '10px 14px',
+                                        fontSize: '14px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--color-border)',
+                                        background: 'var(--color-bg-tertiary)',
+                                        color: 'white'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Print Mode Radio Buttons */}
+                            <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexDirection: 'column' }}>
+                                {/* Local Mode */}
+                                <label style={{
+                                    display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer',
+                                    padding: '15px',
+                                    border: (!config.printServerEnabled && !config.printClientEnabled) ? '2px solid #10b981' : '2px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '12px',
+                                    background: (!config.printServerEnabled && !config.printClientEnabled) ? 'rgba(16,185,129,0.1)' : 'transparent'
+                                }}>
+                                    <input
+                                        type="radio"
+                                        name="printMode"
+                                        checked={!config.printServerEnabled && !config.printClientEnabled}
+                                        onChange={() => updateConfig({ printServerEnabled: false, printClientEnabled: false })}
+                                        style={{ width: '20px', height: '20px' }}
+                                    />
+                                    <div>
+                                        <div style={{ fontWeight: 600 }}>🖨️ Printer Lokal (Default)</div>
+                                        <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                                            Device ini mencetak langsung ke printer yang terhubung via USB
+                                        </div>
+                                    </div>
+                                </label>
+
+                                {/* Print Server Mode */}
+                                <label style={{
+                                    display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer',
+                                    padding: '15px',
+                                    border: config.printServerEnabled ? '2px solid #3b82f6' : '2px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '12px',
+                                    background: config.printServerEnabled ? 'rgba(59,130,246,0.1)' : 'transparent'
+                                }}>
+                                    <input
+                                        type="radio"
+                                        name="printMode"
+                                        checked={!!config.printServerEnabled}
+                                        onChange={() => updateConfig({ printServerEnabled: true, printClientEnabled: false })}
+                                        style={{ width: '20px', height: '20px' }}
+                                    />
+                                    <div>
+                                        <div style={{ fontWeight: 600 }}>📡 Print Server (Terima dari device lain)</div>
+                                        <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                                            Device ini terhubung ke printer & menerima print job dari device lain via LAN
+                                        </div>
+                                    </div>
+                                </label>
+
+                                {/* Print Client Mode */}
+                                <label style={{
+                                    display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer',
+                                    padding: '15px',
+                                    border: config.printClientEnabled ? '2px solid #f59e0b' : '2px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '12px',
+                                    background: config.printClientEnabled ? 'rgba(245,158,11,0.1)' : 'transparent'
+                                }}>
+                                    <input
+                                        type="radio"
+                                        name="printMode"
+                                        checked={!!config.printClientEnabled}
+                                        onChange={() => updateConfig({ printClientEnabled: true, printServerEnabled: false })}
+                                        style={{ width: '20px', height: '20px' }}
+                                    />
+                                    <div>
+                                        <div style={{ fontWeight: 600 }}>📤 Print Client (Kirim ke device lain)</div>
+                                        <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                                            Device ini mengirim print job ke Print Server device lain via LAN
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+
+                            {/* Print Server Info — shown when this device is Print Server */}
+                            {config.printServerEnabled && (
+                                <div style={{
+                                    marginTop: '20px',
+                                    padding: '16px',
+                                    background: 'rgba(59,130,246,0.1)',
+                                    border: '1px solid rgba(59,130,246,0.3)',
+                                    borderRadius: '12px'
+                                }}>
+                                    <div style={{ fontWeight: 600, marginBottom: '8px', color: '#60a5fa' }}>
+                                        ✅ Print Server Aktif
+                                    </div>
+                                    <div style={{ fontSize: '13px', color: '#9ca3af' }}>
+                                        Device lain bisa mengirim print job ke alamat ini:
+                                    </div>
+                                    <div style={{
+                                        marginTop: '8px',
+                                        padding: '10px 14px',
+                                        background: 'rgba(0,0,0,0.3)',
+                                        borderRadius: '8px',
+                                        fontFamily: 'monospace',
+                                        fontSize: '16px',
+                                        fontWeight: 'bold',
+                                        color: '#60a5fa',
+                                        letterSpacing: '0.5px'
+                                    }}>
+                                        http://{localIp || '?.?.?.?'}:5050
+                                    </div>
+                                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
+                                        Pastikan kedua device terhubung di jaringan WiFi/LAN yang sama
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Print Client Config — shown when this device is Print Client */}
+                            {config.printClientEnabled && (
+                                <div style={{
+                                    marginTop: '20px',
+                                    padding: '16px',
+                                    background: 'rgba(245,158,11,0.1)',
+                                    border: '1px solid rgba(245,158,11,0.3)',
+                                    borderRadius: '12px'
+                                }}>
+                                    <label style={{ display: 'block', fontSize: '13px', color: '#fbbf24', marginBottom: '8px', fontWeight: 600 }}>
+                                        🌐 Print Server URL
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                        <input
+                                            type="text"
+                                            value={config.printServerUrl || ''}
+                                            onChange={(e) => updateConfig({ printServerUrl: e.target.value })}
+                                            placeholder="http://192.168.1.100:5050"
+                                            style={{
+                                                flex: 1,
+                                                maxWidth: '350px',
+                                                padding: '10px 14px',
+                                                fontSize: '14px',
+                                                borderRadius: '8px',
+                                                border: '1px solid var(--color-border)',
+                                                background: 'var(--color-bg-tertiary)',
+                                                color: 'white',
+                                                fontFamily: 'monospace'
+                                            }}
+                                        />
+                                        <button
+                                            className={styles.addButton}
+                                            onClick={async () => {
+                                                try {
+                                                    const result = await window.api.printer.checkPrintServer(config.printServerUrl)
+                                                    if (result.success && result.data?.online) {
+                                                        alert(`✅ Print Server Online!\n\nPrinter: ${result.data.printerName}\nDevice: ${result.data.deviceName}\nAntrian: ${result.data.queueLength} job`)
+                                                    } else {
+                                                        alert(`❌ Gagal terhubung ke Print Server\n\n${result.data?.error || result.error || 'Connection refused'}`)
+                                                    }
+                                                } catch (err: any) {
+                                                    alert(`❌ Error: ${err.message}`)
+                                                }
+                                            }}
+                                            style={{ whiteSpace: 'nowrap' }}
+                                        >
+                                            🔍 Tes Koneksi
+                                        </button>
+                                    </div>
+                                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#6b7280' }}>
+                                        Masukkan URL Print Server (IP device yang terhubung ke printer). Pastikan kedua device terhubung di jaringan yang sama.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                         
                         {/* Print Queue State */}
                         <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
@@ -2150,14 +2340,16 @@ function AdminDashboard(): JSX.Element {
                             <div className={styles.historyTable} style={{ marginTop: '15px' }}>
                                 <div className={styles.tableHeader}>
                                     <span>Job ID</span>
-                                    <span>Printer</span>
+                                    <span>Device</span>
                                     <span>Status</span>
                                     <span>Copies</span>
                                 </div>
                                 {printQueue.length > 0 ? printQueue.map(job => (
                                     <div key={job.id} className={styles.tableRow}>
                                         <span className={styles.emailCell}>{job.id}</span>
-                                        <span className={styles.printCell}>{job.printerName}</span>
+                                        <span className={styles.printCell} style={{ color: job.sourceDevice && job.sourceDevice !== 'Local' ? '#f59e0b' : '#9ca3af' }}>
+                                            {job.sourceDevice || 'Local'}
+                                        </span>
                                         <span className={styles.galleryCell} style={{ color: job.status === 'PRINTING' ? '#3b82f6' : '#f59e0b', fontWeight: 'bold' }}>
                                             {job.status === 'PRINTING' ? '🖨️ Printing...' : '⏳ Queued'}
                                         </span>
@@ -2178,7 +2370,7 @@ function AdminDashboard(): JSX.Element {
                             <div className={styles.historyTable} style={{ marginTop: '15px', maxHeight: '300px', overflowY: 'auto' }}>
                                 <div className={styles.tableHeader}>
                                     <span>Session / Time</span>
-                                    <span>Printer</span>
+                                    <span>Device</span>
                                     <span>Status</span>
                                     <span>Copies</span>
                                 </div>
@@ -2187,7 +2379,9 @@ function AdminDashboard(): JSX.Element {
                                         <span className={styles.emailCell}>
                                             {new Date(job.createdAt).toLocaleTimeString()}
                                         </span>
-                                        <span className={styles.printCell}>{job.printerName}</span>
+                                        <span className={styles.printCell} style={{ color: job.sourceDevice && job.sourceDevice !== 'Local' ? '#f59e0b' : '#9ca3af' }}>
+                                            {job.sourceDevice || 'Local'}
+                                        </span>
                                         <span className={styles.galleryCell} style={{ color: job.status === 'COMPLETED' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
                                             {job.status === 'COMPLETED' ? '✅ Done' : '❌ Failed'}
                                         </span>

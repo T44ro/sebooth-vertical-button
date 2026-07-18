@@ -13,6 +13,7 @@ export interface PrintJob {
     createdAt: number
     completedAt?: number
     errorMessage?: string
+    sourceDevice?: string // e.g. 'Booth A', 'Booth B' — identifies which device sent the job
 }
 
 export class PrintQueueService {
@@ -51,7 +52,7 @@ export class PrintQueueService {
         }
     }
 
-    public addJob(sessionId: string, filePath: string, printerName: string, copies: number = 1): PrintJob {
+    public addJob(sessionId: string, filePath: string, printerName: string, copies: number = 1, sourceDevice?: string): PrintJob {
         const job: PrintJob = {
             id: `print_${Date.now()}_${Math.random().toString(36).substring(7)}`,
             sessionId,
@@ -59,7 +60,8 @@ export class PrintQueueService {
             printerName,
             copies,
             status: 'QUEUED',
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            sourceDevice: sourceDevice || 'Local'
         }
         
         this.queue.push(job)

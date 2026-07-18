@@ -68,7 +68,14 @@ const api = {
             const sub = (_: any, data: any[]) => callback(data)
             ipcRenderer.on('printer:history-updated', sub)
             return () => ipcRenderer.removeListener('printer:history-updated', sub)
-        }
+        },
+
+        // Remote Printing (Double Device)
+        remotePrint: (options: { imageData: string; copies: number; sessionId: string }): Promise<APIResponse<{ jobId?: string }>> =>
+            ipcRenderer.invoke('printer:remote-print', options),
+
+        checkPrintServer: (serverUrl?: string): Promise<APIResponse<any>> =>
+            ipcRenderer.invoke('printer:check-print-server', serverUrl)
     },
 
     // System APIs
