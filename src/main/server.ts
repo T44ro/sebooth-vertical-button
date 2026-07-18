@@ -7,6 +7,7 @@ import { networkInterfaces } from 'os'
 import { tmpdir } from 'os'
 import { printerHandler } from './handlers/PrinterHandler'
 import { configService } from './services/ConfigService'
+import { printQueueService } from './services/PrintQueueService'
 
 let serverInstance: any = null
 
@@ -239,7 +240,6 @@ export function startLocalServer(port = 5050) {
     // 2. API to get print queue & history
     server.get('/api/print/queue', (req, res) => {
         try {
-            const { printQueueService } = require('./services/PrintQueueService')
             res.json(printQueueService.getQueue())
         } catch (e) {
             res.status(500).json({ error: 'Failed' })
@@ -248,7 +248,6 @@ export function startLocalServer(port = 5050) {
 
     server.get('/api/print/history', (req, res) => {
         try {
-            const { printQueueService } = require('./services/PrintQueueService')
             res.json(printQueueService.getHistory())
         } catch (e) {
             res.status(500).json({ error: 'Failed' })
@@ -275,7 +274,6 @@ export function startLocalServer(port = 5050) {
             const stripPath = join(sessionPath, photoStrip)
             
             // Send into queue service
-            const { printQueueService } = require('./services/PrintQueueService')
             printQueueService.addJob(sessionId, stripPath, 'Print to PDF', 1)
 
             // Immediately return success
@@ -317,7 +315,6 @@ export function startLocalServer(port = 5050) {
             console.log(`[RemotePrint] Received job from "${deviceName || 'Unknown'}" | Session: ${sessionId} | Copies: ${copies} | File size: ${buffer.length} bytes`)
 
             // Queue the print job using the local printer
-            const { printQueueService } = require('./services/PrintQueueService')
             const job = printQueueService.addJob(
                 sessionId || 'remote_session',
                 tempFilePath,
@@ -349,7 +346,6 @@ export function startLocalServer(port = 5050) {
         }
 
         try {
-            const { printQueueService } = require('./services/PrintQueueService')
             const queue = printQueueService.getQueue()
 
             res.json({
