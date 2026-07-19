@@ -296,7 +296,7 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                         const destPath = join(baseDir, photo.filename)
                         if (params.mirrorOutput) {
                             try {
-                                buffer = await sharp(buffer).flop().toBuffer()
+                                buffer = Buffer.from(await sharp(buffer).flop().toBuffer())
                             } catch (sharpErr) {
                                 console.error('Failed to mirror webcam photo base64:', sharpErr)
                             }
