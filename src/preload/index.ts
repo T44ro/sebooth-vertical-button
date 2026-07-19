@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import {
     CameraDevice,
     CaptureResult,
+    CameraPropertyValues,
     PrinterDevice,
     PrintResult,
     PhotoSlot,
@@ -22,8 +23,8 @@ const api = {
         disconnect: (): Promise<APIResponse<void>> =>
             ipcRenderer.invoke('camera:disconnect'),
 
-        capture: (slotId?: string): Promise<APIResponse<CaptureResult>> =>
-            ipcRenderer.invoke('camera:capture', slotId),
+        capture: (slotId?: string, options?: any): Promise<APIResponse<CaptureResult>> =>
+            ipcRenderer.invoke('camera:capture', slotId, options),
 
         status: (): Promise<APIResponse<{ connected: boolean; camera: CameraDevice | null }>> =>
             ipcRenderer.invoke('camera:status'),
@@ -35,7 +36,36 @@ const api = {
             ipcRenderer.invoke('camera:use-real'),
 
         useDirectPtp: (): Promise<APIResponse<void>> =>
-            ipcRenderer.invoke('camera:use-direct-ptp')
+            ipcRenderer.invoke('camera:use-direct-ptp'),
+
+        useCanonEdsdk: (): Promise<APIResponse<void>> =>
+            ipcRenderer.invoke('camera:use-canon-edsdk'),
+
+        // Camera Property Control (ISO, Aperture, Shutter Speed)
+        setProperty: (property: string, value: string): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:set-property', property, value),
+
+        getProperty: (property: string): Promise<APIResponse<string | null>> =>
+            ipcRenderer.invoke('camera:get-property', property),
+
+        getAvailableValues: (property: string): Promise<APIResponse<CameraPropertyValues>> =>
+            ipcRenderer.invoke('camera:get-available-values', property),
+
+        // Live View Control
+        startLiveView: (): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:start-liveview'),
+
+        stopLiveView: (): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:stop-liveview'),
+
+        getLiveViewUrl: (): Promise<APIResponse<string>> =>
+            ipcRenderer.invoke('camera:get-liveview-url'),
+
+        startRecordingLivePhoto: (slotId: string): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:start-recording-live-photo', slotId),
+
+        stopRecordingLivePhoto: (slotId: string): Promise<APIResponse<string | null>> =>
+            ipcRenderer.invoke('camera:stop-recording-live-photo', slotId)
     },
 
     // Printer APIs

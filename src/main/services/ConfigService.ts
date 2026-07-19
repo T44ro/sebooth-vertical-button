@@ -51,7 +51,13 @@ export class ConfigService {
         printServerEnabled: false,
         printClientEnabled: false,
         printServerUrl: '',
-        deviceName: 'Booth A'
+        deviceName: 'Booth A',
+        // Camera Preview Adjustments
+        cameraZoom: 1.0,
+        cameraScaleX: 1.0,
+        cameraScaleY: 1.0,
+        cameraOffsetX: 0,
+        cameraOffsetY: 0
     }
 
     constructor() {

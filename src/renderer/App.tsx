@@ -26,11 +26,13 @@ function App(): JSX.Element {
     useEffect(() => {
         const initCamera = async () => {
             try {
-                const windowApi = (window as any).api;
+                const windowApi = (window as any).api
                 if (config.cameraMode === 'mock') {
                     await windowApi.camera.useMock()
                 } else if (config.cameraMode === 'ptp') {
                     await windowApi.camera.useDirectPtp()
+                } else if (config.cameraMode === 'edsdk') {
+                    await windowApi.camera.useCanonEdsdk()
                 } else if (config.cameraMode === 'dslr') {
                     await windowApi.camera.useReal()
                 }

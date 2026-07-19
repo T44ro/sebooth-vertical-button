@@ -17,6 +17,18 @@ export interface CaptureResult {
     timestamp: number
 }
 
+export interface CameraSettings {
+    iso?: string
+    aperture?: string
+    shutterSpeed?: string
+    whiteBalance?: string
+}
+
+export interface CameraPropertyValues {
+    current: string
+    available: string[]
+}
+
 export interface CameraHandler {
     listCameras(): Promise<CameraDevice[]>
     connect(cameraId: string): Promise<boolean>
@@ -129,7 +141,7 @@ export interface AppConfig {
     paymentTimeout: number // seconds - timeout for payment page
 
     // Camera
-    cameraMode: 'mock' | 'dslr' | 'ptp' // Mock (webcam), DSLR (CLI), or PTP (Direct)
+    cameraMode: 'mock' | 'dslr' | 'ptp' | 'edsdk' // Mock (webcam), DSLR (CLI), PTP (digiCamControl), or EDSDK (Canon native)
     selectedCameraId?: string // Device ID for USB capture card / specific webcam
 
     // Sharing
@@ -162,6 +174,13 @@ export interface AppConfig {
     printClientEnabled: boolean   // true = this device sends print jobs to a remote print server
     printServerUrl: string        // URL of print server (e.g. "http://192.168.1.100:5050")
     deviceName: string            // Device identity name (e.g. "Booth A", "Booth B")
+
+    // Camera Preview Adjustments
+    cameraZoom?: number // DSLR Live View zoom level (1.0 to 2.0)
+    cameraScaleX?: number // Custom horizontal scale
+    cameraScaleY?: number // Custom vertical scale
+    cameraOffsetX?: number // Custom X offset in px
+    cameraOffsetY?: number // Custom Y offset in px
 }
 
 export interface LUTFilter {

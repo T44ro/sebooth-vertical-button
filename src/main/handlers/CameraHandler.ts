@@ -28,7 +28,7 @@ export abstract class CameraHandler {
      * Capture a photo and save to the specified path
      * This should trigger the physical shutter of the camera
      */
-    abstract capture(outputPath: string): Promise<CaptureResult>
+    abstract capture(outputPath: string, options?: any): Promise<CaptureResult>
 
     /**
      * Get the current connection status
