@@ -123,6 +123,7 @@ const api = {
             videos: { path: string; filename: string }[]
             overlay?: { path: string; filename: string }
             mirrorOutput?: boolean
+            cameraRotation?: 0 | 90 | 180 | 270
             frameConfig?: {
                 width: number
                 height: number

@@ -1231,6 +1231,56 @@ function AdminDashboard(): JSX.Element {
                             </div>
 
                             <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                                <h3>📷 Orientasi & Rotasi Kamera (Camera Tilt)</h3>
+                                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+                                    Aktifkan jika kamera fisik dipasang miring 90° (Portrait Tilt) agar tampilan live preview dan hasil foto tidak terpotong (*side crop*) pada Mode Vertikal.
+                                </p>
+                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => updateConfig({ cameraRotation: (config.cameraRotation === 90 ? 0 : 90) })}
+                                        style={{
+                                            padding: '10px 20px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: (config.cameraRotation === 90 || config.cameraRotation === 270) ? '#10b981' : '#4b5563',
+                                            color: 'white',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                                        }}
+                                    >
+                                        {(config.cameraRotation === 90 || config.cameraRotation === 270) ? '🔄 Kamera Dimiringkan (ON - 90°)' : '📷 Kamera Normal (OFF - 0°)'}
+                                    </button>
+
+                                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '8px 16px', borderRadius: '8px' }}>
+                                        <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>Sudut Rotasi:</span>
+                                        {[
+                                            { label: '0° (Normal)', val: 0 },
+                                            { label: '90° (Miring CW)', val: 90 },
+                                            { label: '180° (Terbalik)', val: 180 },
+                                            { label: '270° (Miring CCW)', val: 270 }
+                                        ].map(opt => (
+                                            <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: 'white', fontWeight: 500 }}>
+                                                <input
+                                                    type="radio"
+                                                    name="cameraRotation"
+                                                    value={opt.val}
+                                                    checked={(config.cameraRotation || 0) === opt.val}
+                                                    onChange={() => updateConfig({ cameraRotation: opt.val as 0 | 90 | 180 | 270 })}
+                                                    style={{ accentColor: 'var(--clay-blue)', width: '16px', height: '16px' }}
+                                                />
+                                                {opt.label}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
                                 <h3>🏠 Custom Home Background</h3>
                                 <p>Upload custom images or videos for the Home screen background. A landscape background will be used in Horizontal layout, and a portrait background will be used in Vertical layout. Toggling the Live Cam background on the Home screen will override these settings.</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
@@ -2077,6 +2127,52 @@ function AdminDashboard(): JSX.Element {
                                     >
                                         {isLoadingDevices ? '🔄...' : '🔄 REFRESH'}
                                     </button>
+                                </div>
+
+                                {/* Camera Tilt / Rotation Controls in Camera Tab */}
+                                <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px dashed var(--color-border)' }}>
+                                    <h4 style={{ fontSize: '14px', marginBottom: '8px' }}>📐 Rotasi Kamera (Camera Tilt)</h4>
+                                    <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
+                                        Atur rotasi kamera jika posisi fisik kamera di-tilting 90 derajat untuk Mode Vertikal.
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => updateConfig({ cameraRotation: (config.cameraRotation === 90 ? 0 : 90) })}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                background: (config.cameraRotation === 90 || config.cameraRotation === 270) ? '#10b981' : '#4b5563',
+                                                color: 'white',
+                                                fontWeight: 'bold',
+                                                fontSize: '13px',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {(config.cameraRotation === 90 || config.cameraRotation === 270) ? '🔄 Kamera Dimiringkan (ON)' : '📷 Kamera Normal (OFF)'}
+                                        </button>
+                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                            {[
+                                                { label: '0°', val: 0 },
+                                                { label: '90° CW', val: 90 },
+                                                { label: '180°', val: 180 },
+                                                { label: '270° CCW', val: 270 }
+                                            ].map(opt => (
+                                                <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '13px', color: 'white' }}>
+                                                    <input
+                                                        type="radio"
+                                                        name="cameraRotationCamTab"
+                                                        value={opt.val}
+                                                        checked={(config.cameraRotation || 0) === opt.val}
+                                                        onChange={() => updateConfig({ cameraRotation: opt.val as 0 | 90 | 180 | 270 })}
+                                                        style={{ accentColor: 'var(--clay-blue)' }}
+                                                    />
+                                                    {opt.label}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

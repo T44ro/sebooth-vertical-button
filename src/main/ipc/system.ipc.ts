@@ -231,6 +231,7 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
         videos: { path: string; filename: string }[]
         overlay?: { path: string; filename: string }
         mirrorOutput?: boolean
+        cameraRotation?: 0 | 90 | 180 | 270
         frameConfig?: {
             width: number
             height: number
@@ -376,22 +377,40 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                             let filterGraph = ''
 
                             // 1. Scale all videos safely and map them (Object-fit: cover behavior + Rotation geometry)
+                            const camRot = params.cameraRotation || 0
+                            let camRotFilter = ''
+                            if (camRot === 90) {
+                                camRotFilter = 'transpose=1' // 90 deg CW
+                            } else if (camRot === 270) {
+                                camRotFilter = 'transpose=2' // 90 deg CCW
+                            } else if (camRot === 180) {
+                                camRotFilter = 'hflip,vflip' // 180 deg
+                            }
+
                             validInputs.forEach((input, i) => {
                                 const w = Math.round(input.slot.width)
                                 const h = Math.round(input.slot.height)
                                 const rot = input.slot.rotation || 0
                                 const rotRad = `(${rot}*PI/180)`
 
-                                // 1. Scale video so it fills W x H straight (object-fit: cover)
-                                // 2. Rotate the perfectly covered WxH box around its center, expanding its bounding box
+                                // 1. Rotate raw video by camera physical tilt if mounted sideways
+                                // 2. Scale video so it fills W x H straight (object-fit: cover)
+                                // 3. Apply mirror if requested
+                                // 4. Rotate by frame slot rotation
                                 const rotFilter = rot ? `rotate=${rotRad}:ow='iw*abs(cos(${rotRad}))+ih*abs(sin(${rotRad}))':oh='iw*abs(sin(${rotRad}))+ih*abs(cos(${rotRad}))':c=black@0.0` : ''
 
-                                filterGraph += `[${i + 1}:v]format=yuva420p,scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`
-                                if (params.mirrorOutput) {
-                                    filterGraph += `,hflip`
+                                let inputPipeline = `[${i + 1}:v]format=yuva420p`
+                                if (camRotFilter) {
+                                    inputPipeline += `,${camRotFilter}`
                                 }
-                                if (rotFilter) filterGraph += `,${rotFilter}`
-                                filterGraph += `[v${i}];`
+                                inputPipeline += `,scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`
+                                if (params.mirrorOutput) {
+                                    inputPipeline += `,hflip`
+                                }
+                                if (rotFilter) {
+                                    inputPipeline += `,${rotFilter}`
+                                }
+                                filterGraph += `${inputPipeline}[v${i}];`
                             })
 
                             // 2. Begin overlaying videos onto background [0:v]
@@ -497,19 +516,40 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                         const mp4Filename = video.filename.replace(/\.webm$/, '.mp4')
                         const destPath = join(baseDir, mp4Filename)
 
-                        // If source is already mp4, copy. If webm, convert.
-                        if (cleanUrl.endsWith('.mp4')) {
+                        const camRot = params.cameraRotation || 0
+                        let camRotFilter = ''
+                        if (camRot === 90) {
+                            camRotFilter = 'transpose=1'
+                        } else if (camRot === 270) {
+                            camRotFilter = 'transpose=2'
+                        } else if (camRot === 180) {
+                            camRotFilter = 'hflip,vflip'
+                        }
+
+                        let videoFilter = ''
+                        if (camRotFilter) videoFilter = camRotFilter
+                        if (params.mirrorOutput) {
+                            videoFilter += videoFilter ? ',hflip' : 'hflip'
+                        }
+
+                        // If source is mp4 and needs no transformation, copy directly
+                        if (cleanUrl.endsWith('.mp4') && !videoFilter) {
                             copyFileSync(cleanUrl, destPath)
                             savedFiles.push({ path: destPath, filename: mp4Filename, mimeType: 'video/mp4' })
                         } else {
-                            // Convert webm to mp4 using ffmpeg
-                            await new Promise<void>((resolve, reject) => {
-                                ffmpeg(cleanUrl)
+                            // Convert/Rotate webm or mp4 using ffmpeg
+                            await new Promise<void>((resolve) => {
+                                let command = ffmpeg(cleanUrl)
                                     .outputOptions('-c:v libx264')
                                     .outputOptions('-preset veryfast') // speed up conversion
                                     .outputOptions('-crf 28') // acceptable quality, smaller size
                                     .outputOptions('-pix_fmt yuv420p') // maximize compatibility
-                                    .output(destPath)
+
+                                if (videoFilter) {
+                                    command = command.outputOptions(`-vf ${videoFilter}`)
+                                }
+
+                                command.output(destPath)
                                     .on('end', () => {
                                         savedFiles.push({ path: destPath, filename: mp4Filename, mimeType: 'video/mp4' })
                                         resolve()

@@ -76,12 +76,14 @@ function CaptureSession(): JSX.Element {
         : 4 / 3
 
     const [safeArea, setSafeArea] = useState({ left: 0, top: 0, width: 0, height: 0 })
+    const [viewfinderSize, setViewfinderSize] = useState({ width: 0, height: 0 })
 
     const updateSafeArea = () => {
         const vf = viewfinderRef.current
         if (!vf) return
         const W = vf.clientWidth
         const H = vf.clientHeight
+        setViewfinderSize({ width: W, height: H })
         const ratio = slotAspectNumeric || 4 / 3
 
         const safeW = Math.min(W, Math.round(H * ratio))
@@ -218,23 +220,47 @@ function CaptureSession(): JSX.Element {
             return null
         }
 
-        // Set canvas size to match video
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
+        const rotation = config.cameraRotation || 0
+
+        // If camera is rotated 90° or 270°, swap canvas width and height for portrait aspect
+        if (rotation === 90 || rotation === 270) {
+            canvas.width = video.videoHeight
+            canvas.height = video.videoWidth
+        } else {
+            canvas.width = video.videoWidth
+            canvas.height = video.videoHeight
+        }
 
         const ctx = canvas.getContext('2d')
         if (!ctx) return null
 
-        // Mirror the image (flip horizontally) for selfie mode
         ctx.save()
-        ctx.translate(canvas.width, 0)
-        ctx.scale(-1, 1)
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        if (rotation === 90) {
+            ctx.translate(canvas.width / 2, canvas.height / 2)
+            ctx.rotate((90 * Math.PI) / 180)
+            ctx.scale(-1, 1)
+            ctx.drawImage(video, -video.videoWidth / 2, -video.videoHeight / 2, video.videoWidth, video.videoHeight)
+        } else if (rotation === 270) {
+            ctx.translate(canvas.width / 2, canvas.height / 2)
+            ctx.rotate((270 * Math.PI) / 180)
+            ctx.scale(-1, 1)
+            ctx.drawImage(video, -video.videoWidth / 2, -video.videoHeight / 2, video.videoWidth, video.videoHeight)
+        } else if (rotation === 180) {
+            ctx.translate(canvas.width / 2, canvas.height / 2)
+            ctx.rotate((180 * Math.PI) / 180)
+            ctx.scale(-1, 1)
+            ctx.drawImage(video, -video.videoWidth / 2, -video.videoHeight / 2, video.videoWidth, video.videoHeight)
+        } else {
+            // Standard 0deg mirror mode
+            ctx.translate(canvas.width, 0)
+            ctx.scale(-1, 1)
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        }
         ctx.restore()
 
         // Return as data URL
         return canvas.toDataURL('image/jpeg', 0.92)
-    }, [])
+    }, [config.cameraRotation])
 
     // Handle countdown or immediate capture
     const startCountdown = useCallback((slotIndex: number) => {
@@ -641,13 +667,41 @@ function CaptureSession(): JSX.Element {
                     ref={viewfinderRef}
                 >
                     {/* Camera Feed */}
-                    <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className={styles.video}
-                    />
+                    {(() => {
+                        const rotation = config.cameraRotation || 0
+                        const isRotated90or270 = rotation === 90 || rotation === 270
+
+                        const videoStyle: React.CSSProperties = isRotated90or270
+                            ? {
+                                position: 'absolute',
+                                top: '50%',
+                                left: '50%',
+                                width: viewfinderSize.height ? `${viewfinderSize.height}px` : '100vh',
+                                height: viewfinderSize.width ? `${viewfinderSize.width}px` : '100vw',
+                                transform: `translate(-50%, -50%) rotate(${rotation}deg) scaleX(-1)`,
+                                objectFit: 'cover'
+                            }
+                            : rotation === 180
+                            ? {
+                                transform: 'rotate(180deg) scaleX(-1)',
+                                objectFit: 'cover'
+                            }
+                            : {
+                                transform: 'scaleX(-1)',
+                                objectFit: 'cover'
+                            }
+
+                        return (
+                            <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                muted
+                                className={styles.video}
+                                style={videoStyle}
+                            />
+                        )
+                    })()}
 
                     {/* Loading Overlay */}
                     {isLoadingCamera && (

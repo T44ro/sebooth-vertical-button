@@ -93,15 +93,33 @@ function Landing(): JSX.Element {
                 console.log('[Landing] Requesting camera access...')
 
                 const videoConstraints: MediaTrackConstraints = {
-                    width: { ideal: 1920, min: 1280 },
-                    height: { ideal: 1080, min: 720 },
-                    facingMode: 'user'
+                    width: { ideal: 1920, min: 640 },
+                    height: { ideal: 1080, min: 480 },
                 }
 
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: videoConstraints,
-                    audio: false
-                })
+                if (config.selectedCameraId) {
+                    videoConstraints.deviceId = { exact: config.selectedCameraId }
+                } else {
+                    videoConstraints.facingMode = 'user'
+                }
+
+                let stream: MediaStream
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: videoConstraints,
+                        audio: false
+                    })
+                } catch (primaryErr) {
+                    if (config.selectedCameraId) {
+                        console.warn('[Landing] Failed with exact deviceId, trying fallback without deviceId:', primaryErr)
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
+                            audio: false
+                        })
+                    } else {
+                        throw primaryErr
+                    }
+                }
 
                 console.log('[Landing] Camera stream acquired:', {
                     videoTracks: stream.getVideoTracks().length,
@@ -138,7 +156,7 @@ function Landing(): JSX.Element {
                 streamRef.current = null
             }
         }
-    }, [liveCameraEnabled])
+    }, [liveCameraEnabled, config.selectedCameraId])
 
     const handleAdminHoldStart = useCallback(() => {
         const timer = setInterval(() => {
@@ -222,18 +240,41 @@ function Landing(): JSX.Element {
             exit={{ opacity: 0 }}
         >
             {/* ── LIVE CAMERA BACKGROUND ── */}
-            {liveCameraEnabled && (
-                <video
-                    ref={videoRef}
-                    className={styles.liveCameraBackground}
-                    autoPlay
-                    muted
-                    playsInline
-                    style={{
+            {liveCameraEnabled && (() => {
+                const rotation = config.cameraRotation || 0
+                const isRotated90or270 = rotation === 90 || rotation === 270
+
+                const videoStyle: React.CSSProperties = isRotated90or270
+                    ? {
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        width: '100vh',
+                        height: '100vw',
+                        transform: `translate(-50%, -50%) rotate(${rotation}deg) scaleX(-1)`,
+                        objectFit: 'cover'
+                    }
+                    : rotation === 180
+                    ? {
+                        transform: 'rotate(180deg) scaleX(-1)',
+                        objectFit: 'cover'
+                    }
+                    : {
                         transform: 'scaleX(-1)',
-                    }}
-                />
-            )}
+                        objectFit: 'cover'
+                    }
+
+                return (
+                    <video
+                        ref={videoRef}
+                        className={styles.liveCameraBackground}
+                        autoPlay
+                        muted
+                        playsInline
+                        style={videoStyle}
+                    />
+                )
+            })()}
 
             {/* ── CUSTOM BACKGROUND (IMAGE OR VIDEO) ── */}
             {!liveCameraEnabled && hasCustomBg && (

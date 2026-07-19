@@ -162,6 +162,7 @@ function OutputPage(): JSX.Element {
                         videos: videosForSave,
                         overlay: { path: sessionFrame.overlayPath, filename: 'overlay.png' },
                         mirrorOutput: isMirrored,
+                        cameraRotation: config.cameraRotation || 0,
                         frameConfig: {
                             width: sessionFrame.canvasWidth,
                             height: sessionFrame.canvasHeight,
@@ -613,12 +614,27 @@ function OutputPage(): JSX.Element {
                                 }
                             }
                             
+                            const cameraRotation = config.cameraRotation || 0
+                            const isRotated90or270 = cameraRotation === 90 || cameraRotation === 270
+
+                            const camRotTransform = isVideo && isRotated90or270
+                                ? `rotate(${cameraRotation}deg) scaleX(-1)`
+                                : isVideo && cameraRotation === 180
+                                ? `rotate(180deg) scaleX(-1)`
+                                : isVideo && isMirrored
+                                ? `scaleX(-1)`
+                                : ''
+
                             const mediaStyle: React.CSSProperties = {
                                 position: 'absolute',
-                                width: '100%',
-                                height: '100%',
+                                top: isVideo && isRotated90or270 ? '50%' : 0,
+                                left: isVideo && isRotated90or270 ? '50%' : 0,
+                                width: isVideo && isRotated90or270 ? `${slot.height}px` : '100%',
+                                height: isVideo && isRotated90or270 ? `${slot.width}px` : '100%',
                                 objectFit: 'cover',
-                                transform: `translate(${photo.panX || 0}px, ${photo.panY || 0}px) scale(${photo.scale || 1})`,
+                                transform: isVideo && isRotated90or270
+                                    ? `translate(-50%, -50%) ${camRotTransform} translate(${photo.panX || 0}px, ${photo.panY || 0}px) scale(${photo.scale || 1})`
+                                    : `translate(${photo.panX || 0}px, ${photo.panY || 0}px) scale(${photo.scale || 1}) ${camRotTransform}`,
                                 transformOrigin: 'center center',
                                 ...filterStyle
                             }

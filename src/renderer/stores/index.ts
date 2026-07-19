@@ -61,6 +61,7 @@ const defaultConfig: AppConfig = {
     queueWebhookSecret: 'sebooth-queue-webhook-2026',
     queueApiUrl: 'https://www.sebooth.in',
     appOrientation: 'portrait',
+    cameraRotation: 0,
     mirrorOutput: false,
     customBgLandscape: '',
     customBgPortrait: '',

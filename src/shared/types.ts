@@ -148,6 +148,7 @@ export interface AppConfig {
 
     // Layout Settings
     appOrientation: 'landscape' | 'portrait' // Screen/App layout orientation
+    cameraRotation?: 0 | 90 | 180 | 270 // Camera physical tilt/rotation angle (0, 90, 180, 270 deg)
     mirrorOutput: boolean // Toggle to mirror output by default
 
     // Custom Background Settings
