@@ -1,10 +1,16 @@
-import { exec } from 'child_process'
+import { exec, spawn, ChildProcess } from 'child_process'
 import { promisify } from 'util'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, statSync, rmSync, copyFileSync } from 'fs'
+// @ts-ignore - Ignore missing types for fluent-ffmpeg to prevent build failures
+import ffmpeg from 'fluent-ffmpeg'
+import ffmpegPath from '@ffmpeg-installer/ffmpeg'
+
+ffmpeg.setFfmpegPath(ffmpegPath.path)
 import { dirname, join } from 'path'
 import { app } from 'electron'
 import { CameraHandler } from './CameraHandler'
 import { CameraDevice, CaptureResult } from '@shared/types'
+import { configService } from '../services/ConfigService'
 
 const execAsync = promisify(exec)
 
@@ -34,6 +40,7 @@ export class CanonEDSDKCamera extends CameraHandler {
     private liveViewActive: boolean = false
     private liveViewTempPath: string
     private detectedCameraName: string = ''
+    private helperProcess: ChildProcess | null = null
 
     constructor() {
         super()
@@ -119,7 +126,8 @@ export class CanonEDSDKCamera extends CameraHandler {
             'WiaDriverTool.exe',
             'digiCamControl.exe',
             'CameraControl.exe',
-            'CameraControlCmd.exe'
+            'CameraControlCmd.exe',
+            'CanonHelper.exe'
         ]
 
         for (const appName of appsToKill) {
@@ -148,10 +156,12 @@ export class CanonEDSDKCamera extends CameraHandler {
             || normalized.includes('already open')
     }
 
-    private async waitForCameraRelease(retries = 3): Promise<void> {
+    private async waitForCameraRelease(retries = 3, resetUsb = false): Promise<void> {
         for (let attempt = 1; attempt <= retries; attempt++) {
             await this.killConflictingApps()
-            await this.resetCanonUsbDevice()
+            if (resetUsb) {
+                await this.resetCanonUsbDevice()
+            }
             if (attempt < retries) {
                 await new Promise(resolve => setTimeout(resolve, 1500 * attempt))
             }
@@ -160,10 +170,19 @@ export class CanonEDSDKCamera extends CameraHandler {
 
     private async resetCanonUsbDevice(): Promise<void> {
         try {
-            await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-PnpDevice -Class Camera | Where-Object { $_.FriendlyName -match 'Canon|EOS' } | ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue }"`, { timeout: 20000 })
+            // Attempt to reset Canon-related USB devices via Windows Device Manager
+            await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-PnpDevice -Class Camera | Where-Object { $_.FriendlyName -match 'Canon|EOS|USB' } | ForEach-Object { try { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue } catch {} }"`, { timeout: 20000 })
             console.log('[CanonEDSDK] Reset Canon USB device via PnP')
-        } catch {
-            // Ignore reset errors; not all systems expose the same PnP commands.
+            
+            // Additional: Force re-enumerate USB devices
+            try {
+                await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-PnpDevice -FriendlyName '*Canon*' | ForEach-Object { Restart-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue }"`, { timeout: 10000 })
+                console.log('[CanonEDSDK] USB device re-enumeration attempted')
+            } catch {
+                // Ignore if restart not available
+            }
+        } catch (error: any) {
+            console.warn('[CanonEDSDK] USB reset attempt failed (may not have admin rights):', error.message)
         }
     }
 
@@ -177,6 +196,8 @@ export class CanonEDSDKCamera extends CameraHandler {
 
         return `
 $ErrorActionPreference = 'Stop'
+
+Add-Type -AssemblyName System.Windows.Forms
 
 # Ensure EDSDK.dll and EdsImage.dll are in the same directory
 # Canon.Eos.Framework.dll will P/Invoke EDSDK.dll from its own directory
@@ -198,8 +219,17 @@ try {
 
     /**
      * List available Canon cameras via EDSDK
+     * If the helper process is already connected, return cached camera info
+     * to avoid opening a second EDSDK session that would lock the COM port.
      */
     async listCameras(): Promise<CameraDevice[]> {
+        // If the helper is already running and connected, return cached info
+        // to avoid COM port conflicts from multiple EDSDK sessions
+        if (this.connected && this.helperProcess && this.currentCamera) {
+            console.log('[CanonEDSDK] Returning cached camera info (helper already connected)')
+            return [this.currentCamera]
+        }
+
         console.log('[CanonEDSDK] Scanning for Canon cameras...')
 
         // Verify DLLs exist
@@ -227,7 +257,20 @@ try {
         [Console]::WriteLine("===CANON_NO_CAMERA===")
     } else {
         for ($i = 0; $i -lt $count; $i++) {
-            $cam = $cameras.Item($i)
+            $cam = $null
+            $retryCount = 0
+            while ($retryCount -lt 3) {
+                try {
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    $cam = $cameras.Item($i)
+                    break
+                } catch {
+                    $retryCount++
+                    if ($retryCount -eq 3) { throw }
+                    Start-Sleep -Milliseconds 500
+                }
+            }
             $name = $cam.DeviceDescription
             $port = $cam.PortName
             [Console]::WriteLine("===CANON_CAMERA===$i|$name|$port")
@@ -300,121 +343,126 @@ try {
     async connect(cameraId: string): Promise<boolean> {
         console.log(`[CanonEDSDK] Connecting to camera: ${cameraId}`)
 
-        if (this.connected && this.currentCamera?.id === cameraId) {
-            console.log('[CanonEDSDK] Camera already connected, reusing session')
+        if (this.connected && this.helperProcess) {
+            console.log('[CanonEDSDK] Camera already connected and helper is running, reusing session')
             return true
         }
 
         this.connected = false
         this.currentCamera = null
         this.detectedCameraName = ''
-        await this.waitForCameraRelease()
+        
+        // Clean up any existing helper process
+        await this.disconnect()
 
-        const maxAttempts = 3
-        let lastError: Error | null = null
+        await this.killConflictingApps()
+        await new Promise(resolve => setTimeout(resolve, 500))
 
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const exePath = join(this.canonLibPath, 'CanonHelper.exe')
+        console.log(`[CanonEDSDK] Spawning helper process: ${exePath}`)
+
+        const helperArgs = ['--live-view', this.liveViewTempPath]
+        console.log(`[CanonEDSDK] Helper args: ${JSON.stringify(helperArgs)}`)
+
+        return new Promise<boolean>((resolve, reject) => {
             try {
-                const result = await this.runPowerShell(`
-${this.getEdsdkPreamble()}
+                const helper = spawn(exePath, helperArgs, {
+                    cwd: this.canonLibPath,
+                    stdio: ['pipe', 'pipe', 'pipe'] // pipe stderr, stdout, stdin
+                })
 
-try {
-    $framework = New-Object Canon.Eos.Framework.EosFramework
-    $cameras = $framework.GetCameraCollection()
+                this.helperProcess = helper
+                let isResolved = false
+                let buffer = ''
 
-    if ($cameras.Count -eq 0) {
-        [Console]::WriteLine("===CANON_CONNECT_ERROR===Tidak ada kamera Canon terdeteksi. Pastikan: (1) Kabel USB terhubung, (2) Kamera ON, (3) Mode PTP aktif, (4) Tutup EOS Utility/EOS Webcam Utility")
-        $framework.Dispose()
-        exit
-    }
+                helper.stderr?.on('data', (data) => {
+                    console.error(`[CanonHelper stderr] ${data.toString().trim()}`)
+                })
 
-    $index = ${cameraId.replace(/^canon_edsdk_/, '')}
-    if ([int]::TryParse($index, [ref]$index)) {
-        $cam = $cameras.Item([int]$index)
-    } else {
-        $cam = $cameras.Item(0)
-    }
+                helper.stdout.on('data', (data) => {
+                    buffer += data.toString()
+                    let index = buffer.indexOf('\n')
+                    while (index > -1) {
+                        const line = buffer.substring(0, index).trim()
+                        buffer = buffer.substring(index + 1)
+                        index = buffer.indexOf('\n')
 
-    $name = $cam.DeviceDescription
-    $hostFolder = [System.IO.Path]::GetTempPath()
+                        console.log(`[CanonHelper] stdout: ${line}`)
 
-    # Open session
-    # SavePicturesToHost requires both a photo folder and a temporary video folder path.
-    $cam.SavePicturesToHostAndCamera($hostFolder, $hostFolder)
-
-    [Console]::WriteLine("===CANON_CONNECTED===$name")
-
-    $framework.Dispose()
-} catch {
-    [Console]::WriteLine("===CANON_CONNECT_ERROR===$($_.Exception.Message)")
-}
-`, 20000)
-
-                console.log('[CanonEDSDK] Connect result:', result)
-
-                if (result.includes('===CANON_CONNECTED===')) {
-                    const nameMatch = result.match(/===CANON_CONNECTED===(.*)/m)
-                    this.detectedCameraName = nameMatch?.[1]?.trim() || 'Canon Camera'
-                    this.connected = true
-                    this.currentCamera = {
-                        id: cameraId,
-                        name: `${this.detectedCameraName} (Canon EDSDK)`,
-                        port: 'USB',
-                        connected: true
+                        if (line.startsWith('STATUS:CONNECTED:')) {
+                            const name = line.substring(17).trim()
+                            this.detectedCameraName = name
+                            this.connected = true
+                            this.currentCamera = {
+                                id: cameraId,
+                                name: `${this.detectedCameraName} (Canon EDSDK)`,
+                                port: 'USB',
+                                connected: true
+                            }
+                            isResolved = true
+                            resolve(true)
+                        } else if (line.startsWith('ERROR:')) {
+                            const err = line.substring(6).trim()
+                            if (!isResolved) {
+                                isResolved = true
+                                reject(new Error(err))
+                            }
+                        }
                     }
-                    console.log(`[CanonEDSDK] ✅ Connected: ${this.detectedCameraName}`)
-                    return true
-                }
+                })
 
-                const errMatch = result.match(/===CANON_CONNECT_ERROR===(.*)/m)
-                const errorMsg = errMatch?.[1] || 'Unknown connection error'
-                lastError = new Error(errorMsg)
+                helper.on('error', (err) => {
+                    console.error('[CanonEDSDK] Helper process failed to start:', err)
+                    if (!isResolved) {
+                        isResolved = true
+                        reject(err)
+                    }
+                })
 
-                if (attempt < maxAttempts && this.isPortInUseError(errorMsg)) {
-                    console.warn(`[CanonEDSDK] Port busy, retrying connect (${attempt}/${maxAttempts})...`)
-                    await new Promise(resolve => setTimeout(resolve, 2500 * attempt))
-                    await this.waitForCameraRelease()
-                    continue
-                }
-
-                this.connected = false
-                this.currentCamera = null
-                throw lastError
-            } catch (error: any) {
-                lastError = error
-                this.connected = false
-                this.currentCamera = null
-                console.error('[CanonEDSDK] Connect error:', error.message)
-
-                if (attempt < maxAttempts && this.isPortInUseError(error.message)) {
-                    console.warn(`[CanonEDSDK] Port busy, retrying connect (${attempt}/${maxAttempts})...`)
-                    await new Promise(resolve => setTimeout(resolve, 2500 * attempt))
-                    await this.waitForCameraRelease()
-                    continue
-                }
-
-                throw error
+                helper.on('close', (code) => {
+                    console.log(`[CanonEDSDK] Helper process exited with code ${code}`)
+                    this.connected = false
+                    this.currentCamera = null
+                    this.helperProcess = null
+                    if (!isResolved) {
+                        isResolved = true
+                        reject(new Error(`Helper process exited unexpectedly with code ${code}`))
+                    }
+                })
+            } catch (err) {
+                reject(err)
             }
-        }
-
-        throw lastError || new Error('Unknown connection error')
+        })
     }
 
     async disconnect(): Promise<void> {
-        if (this.liveViewActive) {
-            await this.stopLiveView()
+        if (this.helperProcess) {
+            console.log('[CanonEDSDK] Disconnecting helper process...')
+            try {
+                this.helperProcess.stdin?.write('EXIT\n')
+            } catch (e) {}
+            
+            const processToKill = this.helperProcess
+            setTimeout(() => {
+                try {
+                    processToKill.kill()
+                } catch (e) {}
+            }, 1000)
+            
+            this.helperProcess = null
         }
         this.connected = false
         this.currentCamera = null
         this.detectedCameraName = ''
+        this.liveViewActive = false
         console.log('[CanonEDSDK] Disconnected')
     }
 
     /**
-     * Capture a photo using Canon EDSDK
+     * Capture a photo using Canon EDSDK with timeout guarantee
      * 
      * Flow:
-     * 1. Initialize EDSDK framework
+     * 1. Initialize EDSDK framework with retry on COM port lock
      * 2. Get camera → SavePicturesToHost (RAM mode)
      * 3. Register PictureTaken event handler
      * 4. TakePictureNoAf() — trigger shutter without autofocus (faster)
@@ -422,6 +470,29 @@ try {
      * 6. Save to outputPath
      */
     async capture(outputPath: string, options?: { allowLiveViewFallback?: boolean }): Promise<CaptureResult> {
+        // Wrap entire capture in timeout promise race to guarantee response
+        return Promise.race([
+            this.captureInternal(outputPath, options),
+            new Promise<CaptureResult>((_, reject) =>
+                setTimeout(() => reject(new Error('Capture timeout: PowerShell script did not complete within 65 seconds')), 65000)
+            )
+        ]).catch((error: Error) => ({
+            success: false,
+            error: error.message || 'Unknown capture error',
+            timestamp: Date.now()
+        }))
+    }
+
+    private async captureInternal(outputPath: string, options?: { allowLiveViewFallback?: boolean }): Promise<CaptureResult> {
+        const helper = this.helperProcess
+        if (!helper) {
+            return {
+                success: false,
+                error: 'Canon EDSDK: Helper process is not connected',
+                timestamp: Date.now()
+            }
+        }
+
         try {
             console.log(`[CanonEDSDK] Capturing to: ${outputPath}`)
 
@@ -430,224 +501,64 @@ try {
                 mkdirSync(dir, { recursive: true })
             }
 
-            // Kill any USB-locking apps before capture
-            await this.killConflictingApps()
-
-            const escapedOutputPath = outputPath.replace(/\\/g, '\\\\').replace(/'/g, "''")
-
-            const allowLV = options?.allowLiveViewFallback !== false
-            const useHostSave = allowLV
-
-            const result = await this.runPowerShell(`
-${this.getEdsdkPreamble()}
-
-$outputPath = '${escapedOutputPath}'
-$allowLV = ${allowLV ? '$true' : '$false'}
-$useHostSave = ${useHostSave ? '$true' : '$false'}
-
-try {
-    $framework = New-Object Canon.Eos.Framework.EosFramework
-    $cameras = $framework.GetCameraCollection()
-
-    if ($cameras.Count -eq 0) {
-        [Console]::WriteLine("===CAPTURE_ERROR===Tidak ada kamera Canon terdeteksi")
-        $framework.Dispose()
-        exit
-    }
-
-    $cam = $cameras.Item(0)
-    $camName = $cam.DeviceDescription
-    [Console]::WriteLine("===CAPTURE_CAMERA===$camName")
-
-    # Set save destination to Host + Camera only when using liveview/host save
-    $hostFolder = [System.IO.Path]::GetDirectoryName($outputPath)
-    [Console]::WriteLine("===HOST_FOLDER=== $hostFolder")
-    if ($useHostSave) {
-        try { $beforeFiles = Get-ChildItem -Path $hostFolder -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Select-Object Name,LastWriteTime; [Console]::WriteLine("===HOST_BEFORE_COUNT=== $($beforeFiles.Count)") } catch { }
-        $cam.SavePicturesToHostAndCamera($hostFolder, $hostFolder)
-    } else {
-        [Console]::WriteLine("===HOST_SAVE_DISABLED===LiveView/host save disabled")
-    }
-
-    # Create event synchronization objects
-    $captureCompleted = New-Object System.Threading.ManualResetEvent($false)
-    $capturedImageBytes = $null
-    $captureError = ""
-
-    # Register PictureTaken event handler — this fires when the image arrives
-    $pictureHandler = [System.EventHandler[Canon.Eos.Framework.Eventing.EosImageEventArgs]] {
-        param($sender, $e)
-        try {
-            # $e contains the image data from the Canon SDK event payload
-            $script:capturedImageBytes = $e.ImageData
-            [Console]::WriteLine("===CAPTURE_EVENT_FIRED===ImageSize: $($e.ImageData.Length)")
-        } catch {
-            $script:captureError = $_.Exception.Message
-            [Console]::WriteLine("===CAPTURE_EVENT_ERROR===$($_.Exception.Message)")
-        }
-        $captureCompleted.Set()
-    }
-
-    # Also handle file-based events (some cameras use this instead)
-    $fileHandler = [System.EventHandler[Canon.Eos.Framework.Eventing.EosFileImageEventArgs]] {
-        param($sender, $e)
-        try {
-            $script:capturedImageBytes = [System.IO.File]::ReadAllBytes($e.ImageFilePath)
-            [Console]::WriteLine("===CAPTURE_FILE_EVENT===File: $($e.ImageFilePath), Size: $($script:capturedImageBytes.Length)")
-        } catch {
-            $script:captureError = $_.Exception.Message
-        }
-        $captureCompleted.Set()
-    }
-
-    $cam.add_PictureTaken($pictureHandler)
-    
-    [Console]::WriteLine("===CAPTURE_TRIGGERING===")
-    [Console]::WriteLine("===CAPTURE_OPTION_ALLOW_LV===$allowLV")
-    [Console]::WriteLine("===CAPTURE_OPTION_USE_HOST_SAVE===$useHostSave")
-
-    # Try TakePictureNoAf first (faster, no autofocus delay)
-    $shutterSuccess = $false
-    $lvSaved = $false
-    try {
-        $cam.TakePictureNoAf()
-        [Console]::WriteLine("===CAPTURE_SHUTTER_OK===TakePictureNoAf")
-        $shutterSuccess = $true
-    } catch {
-        # Fallback to TakePicture (with autofocus)
-        [Console]::WriteLine("===CAPTURE_NOAF_FAILED===$($_.Exception.Message)")
-        try {
-            $cam.TakePicture()
-            [Console]::WriteLine("===CAPTURE_SHUTTER_OK===TakePicture")
-            $shutterSuccess = $true
-        } catch {
-            [Console]::WriteLine("===CAPTURE_ERROR_SHUTTER===$($_.Exception.Message)")
-
-            # As a last-resort fallback, try to grab a LiveView frame if available.
-            # Respect options: if allowLiveViewFallback is provided and false, skip liveview fallback to avoid forcing camera preview changes.
-            if ($allowLV -eq $false) {
-                [Console]::WriteLine("===CAPTURE_LIVEVIEW_SKIPPED===LiveView fallback disabled by options")
-            }
-            try {
-                if ($allowLV) {
-                    [Console]::WriteLine("===CAPTURE_LIVEVIEW_TRY===Starting LiveView for fallback frames")
-                    try { $cam.StartLiveView() } catch {}
-                    Start-Sleep -Milliseconds 200
-                    $lvSaved = $false
-                    for ($i = 0; $i -lt 12; $i++) {
-                        try {
-                            $lv = $cam.GetLiveViewImage()
-                            if ($lv -ne $null -and $lv.Length -gt 1000) {
-                                [System.IO.File]::WriteAllBytes($outputPath, $lv)
-                                [Console]::WriteLine("===CAPTURE_SAVED_LV===Size: $($lv.Length)")
-                                $lvSaved = $true
-                                $shutterSuccess = $true
-                                break
-                            }
-                        } catch {
-                            # ignore intermittent liveview errors
+            return new Promise<CaptureResult>((resolve, reject) => {
+                let resolved = false
+                const stdoutListener = (data: Buffer) => {
+                    const lines = data.toString().split('\n')
+                    for (const line of lines) {
+                        const trimmed = line.trim()
+                        console.log(`[CanonHelper capture] stdout: ${trimmed}`)
+                        if (trimmed.startsWith('SUCCESS:')) {
+                            resolved = true
+                            cleanup()
+                            resolve({
+                                success: true,
+                                imagePath: outputPath,
+                                timestamp: Date.now()
+                            })
+                            break
+                        } else if (trimmed.startsWith('ERROR:')) {
+                            resolved = true
+                            cleanup()
+                            resolve({
+                                success: false,
+                                error: trimmed.substring(6).trim(),
+                                timestamp: Date.now()
+                            })
+                            break;
                         }
-                        Start-Sleep -Milliseconds 500
-                    }
-                    try { $cam.StopLiveView() } catch {}
-
-                    if (-not $lvSaved) {
-                        [Console]::WriteLine("===CAPTURE_LIVEVIEW_FAILED===No liveview image returned after attempts")
                     }
                 }
-            } catch {
-                [Console]::WriteLine("===CAPTURE_LIVEVIEW_ERROR===$($_.Exception.Message)")
-            }
-        }
-    }
 
-    # Wait for the image to arrive (max 30 seconds) only if we triggered the shutter
-    $gotImage = $false
-    if ($shutterSuccess -and -not $lvSaved) {
-        $gotImage = $captureCompleted.WaitOne(30000)
-    }
-
-    # Always remove handler if it was registered
-    try { $cam.remove_PictureTaken($pictureHandler) } catch {}
-
-    if ($gotImage -and $capturedImageBytes -ne $null -and $capturedImageBytes.Length -gt 1000) {
-        # Save image to disk
-        [System.IO.File]::WriteAllBytes($outputPath, $capturedImageBytes)
-        [Console]::WriteLine("===CAPTURE_SAVED===Size: $($capturedImageBytes.Length)")
-    } elseif ($captureError) {
-        [Console]::WriteLine("===CAPTURE_ERROR===$captureError")
-    } else {
-        [Console]::WriteLine("===CAPTURE_TIMEOUT===Image did not arrive within 30 seconds, trying host folder poll fallback")
-
-        # Poll host folder for recently written image files as a fallback
-        try {
-            $recent = Get-ChildItem -Path $hostFolder -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($recent -and $recent.Length -gt 1000) {
-                # If the most recent file is already the output path, avoid copying onto itself
-                if ($recent.FullName -ieq $outputPath) {
-                    $size = $recent.Length
-                    [Console]::WriteLine("===CAPTURE_SAVED_POLL===AlreadyAtOutput: $($recent.FullName) Size: $size")
-                } else {
-                    Copy-Item -Path $recent.FullName -Destination $outputPath -Force
-                    $size = (Get-Item $outputPath).Length
-                    [Console]::WriteLine("===CAPTURE_SAVED_POLL===Found: $($recent.FullName) Size: $size")
+                const cleanup = () => {
+                    helper.stdout?.removeListener('data', stdoutListener)
                 }
-            } else {
-                [Console]::WriteLine("===CAPTURE_POLL_NONE===No recent file found in host folder")
-                try { $afterFiles = Get-ChildItem -Path $hostFolder -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Select-Object Name,LastWriteTime; [Console]::WriteLine("===HOST_AFTER_COUNT=== $($afterFiles.Count)") } catch {}
-            }
-        } catch {
-            [Console]::WriteLine("===CAPTURE_POLL_ERROR===$($_.Exception.Message)")
-        }
-    }
 
-    $framework.Dispose()
-} catch {
-    [Console]::WriteLine("===CAPTURE_ERROR===$($_.Exception.Message)")
-}
-`, 30000)
+                helper.stdout?.on('data', stdoutListener)
 
-            console.log('[CanonEDSDK] Capture result:', result)
-
-            // Treat any of the CAPTURE_SAVED markers as success (direct save, liveview save, or poll-copy)
-            if (result.includes('===CAPTURE_SAVED===') || result.includes('===CAPTURE_SAVED_LV===') || result.includes('===CAPTURE_SAVED_POLL===')) {
-                if (existsSync(outputPath)) {
-                    const fileSize = require('fs').statSync(outputPath).size
-                    console.log(`[CanonEDSDK] ✅ Photo saved: ${outputPath} (${fileSize} bytes)`)
-                    return {
-                        success: true,
-                        imagePath: outputPath,
-                        timestamp: Date.now()
+                // 20 seconds capture timeout
+                setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true
+                        cleanup()
+                        resolve({
+                            success: false,
+                            error: 'Capture timeout waiting for C# helper response',
+                            timestamp: Date.now()
+                        })
                     }
-                } else {
-                    // Some code paths may report saved but the file was written elsewhere; attempt to parse size from output
-                    const sizeMatch = result.match(/Size: (\d+)/)
-                    const fileSize = sizeMatch ? sizeMatch[1] : 'unknown'
-                    console.log(`[CanonEDSDK] Photo reported saved but file not found: ${outputPath} (reported ${fileSize} bytes)`)
-                    return {
-                        success: false,
-                        error: `Canon EDSDK: reported saved but file missing (${fileSize} bytes)`,
-                        timestamp: Date.now()
-                    }
-                }
-            }
+                }, 20000)
 
-            // Extract error message
-            const errMatch = result.match(/===CAPTURE_ERROR===(.*)/m)
-            const timeoutMatch = result.match(/===CAPTURE_TIMEOUT===(.*)/m)
-            const errorMsg = errMatch?.[1] || timeoutMatch?.[1] || 'Capture failed — unknown error'
+                // Send capture command
+                console.log(`[CanonEDSDK] Sending CAPTURE command to helper: ${outputPath}`)
+                helper.stdin?.write(`CAPTURE ${outputPath}\n`)
+            })
 
-            console.error(`[CanonEDSDK] Capture failed: ${errorMsg}`)
-            return {
-                success: false,
-                error: `Canon EDSDK: ${errorMsg}`,
-                timestamp: Date.now()
-            }
         } catch (error: any) {
             console.error('[CanonEDSDK] Capture exception:', error.message)
             return {
                 success: false,
-                error: `Canon EDSDK Error: ${error.message}`,
+                error: `Canon EDSDK Capture Error: ${error.message}`,
                 timestamp: Date.now()
             }
         }
@@ -758,113 +669,222 @@ try {
      * Start EDSDK Live View
      */
     async startLiveView(): Promise<boolean> {
-        try {
-            const result = await this.runPowerShell(`
-${this.getEdsdkPreamble()}
-
-try {
-    $framework = New-Object Canon.Eos.Framework.EosFramework
-    $cameras = $framework.GetCameraCollection()
-    if ($cameras.Count -eq 0) {
-        [Console]::WriteLine("===LV_ERROR===No camera")
-        $framework.Dispose()
-        exit
-    }
-    $cam = $cameras.Item(0)
-    $cam.StartLiveView()
-    [Console]::WriteLine("===LV_STARTED===")
-    $framework.Dispose()
-} catch {
-    [Console]::WriteLine("===LV_ERROR===$($_.Exception.Message)")
-}
-`, 10000)
-
-            if (result.includes('===LV_STARTED===')) {
-                this.liveViewActive = true
-                console.log('[CanonEDSDK] Live view started')
-                return true
+        if (!this.helperProcess) {
+            console.log('[CanonEDSDK] Helper process not running in startLiveView. Attempting to auto-connect...')
+            try {
+                const connected = await this.connect('canon_edsdk_0')
+                if (!connected) {
+                    console.warn('[CanonEDSDK] Auto-connect failed in startLiveView')
+                    return false
+                }
+            } catch (err: any) {
+                console.error('[CanonEDSDK] Auto-connect threw exception in startLiveView:', err.message)
+                return false
+            }
+        }
+        
+        return new Promise<boolean>((resolve) => {
+            const helper = this.helperProcess!
+            let resolved = false
+            const hasCaptureCard = !!configService.getConfig().selectedCameraId
+            const expectedStatus = hasCaptureCard ? 'STATUS:LV_STARTED_TFT' : 'STATUS:LV_STARTED'
+            
+            const stdoutListener = (data: Buffer) => {
+                const lines = data.toString().split('\n')
+                for (const line of lines) {
+                    const trimmed = line.trim()
+                    console.log(`[CanonHelper liveview] stdout: ${trimmed}`)
+                    if (trimmed === expectedStatus) {
+                        resolved = true
+                        cleanup()
+                        resolve(true)
+                        break
+                    } else if (trimmed.startsWith('ERROR:')) {
+                        resolved = true
+                        cleanup()
+                        resolve(false)
+                        break
+                    }
+                }
             }
 
-            console.warn('[CanonEDSDK] Failed to start live view:', result)
-            return false
-        } catch (error: any) {
-            console.error('[CanonEDSDK] Live view start error:', error.message)
-            return false
-        }
+            const cleanup = () => {
+                helper.stdout?.removeListener('data', stdoutListener)
+            }
+
+            helper.stdout?.on('data', stdoutListener)
+
+            // 5 seconds timeout
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true
+                    cleanup()
+                    console.warn(`[CanonEDSDK] Timeout waiting for live view start (${expectedStatus})`)
+                    resolve(false)
+                }
+            }, 5000)
+
+            if (hasCaptureCard) {
+                console.log('[CanonEDSDK] Starting live view in TFT (Camera/HDMI) mode (capture card active)...')
+                helper.stdin?.write('START_LV_TFT\n')
+            } else {
+                console.log('[CanonEDSDK] Starting live view in Host (USB) mode...')
+                helper.stdin?.write('START_LV\n')
+            }
+            this.liveViewActive = true
+        })
     }
 
-    /**
-     * Stop EDSDK Live View
-     */
     async stopLiveView(): Promise<boolean> {
-        try {
-            const result = await this.runPowerShell(`
-${this.getEdsdkPreamble()}
-
-try {
-    $framework = New-Object Canon.Eos.Framework.EosFramework
-    $cameras = $framework.GetCameraCollection()
-    if ($cameras.Count -eq 0) {
-        [Console]::WriteLine("===LV_ERROR===No camera")
-        $framework.Dispose()
-        exit
-    }
-    $cam = $cameras.Item(0)
-    $cam.StopLiveView()
-    [Console]::WriteLine("===LV_STOPPED===")
-    $framework.Dispose()
-} catch {
-    [Console]::WriteLine("===LV_ERROR===$($_.Exception.Message)")
-}
-`, 10000)
-
-            this.liveViewActive = false
-            console.log('[CanonEDSDK] Live view stopped')
-            return true
-        } catch (error: any) {
-            console.error('[CanonEDSDK] Live view stop error:', error.message)
-            this.liveViewActive = false
-            return false
-        }
-    }
-
-    /**
-     * Get a single Live View frame from EDSDK and save to temp file.
-     * Returns the path to the temp file.
-     */
-    async getLiveViewFrame(): Promise<string | null> {
-        try {
-            const escapedPath = this.liveViewTempPath.replace(/\\/g, '\\\\').replace(/'/g, "''")
-
-            const result = await this.runPowerShell(`
-${this.getEdsdkPreamble()}
-
-try {
-    $framework = New-Object Canon.Eos.Framework.EosFramework
-    $cameras = $framework.GetCameraCollection()
-    if ($cameras.Count -eq 0) {
-        $framework.Dispose()
-        exit
-    }
-    $cam = $cameras.Item(0)
-    $imageBytes = $cam.GetLiveViewImage()
-    if ($imageBytes -ne $null -and $imageBytes.Length -gt 100) {
-        [System.IO.File]::WriteAllBytes('${escapedPath}', $imageBytes)
-        [Console]::WriteLine("===LV_FRAME_OK===$($imageBytes.Length)")
-    }
-    $framework.Dispose()
-} catch {
-    # Silent fail for live view frames — they're ephemeral
-}
-`, 5000)
-
-            if (result.includes('===LV_FRAME_OK===')) {
-                return this.liveViewTempPath
+        if (!this.helperProcess) return false
+        
+        return new Promise<boolean>((resolve) => {
+            const helper = this.helperProcess!
+            let resolved = false
+            
+            const stdoutListener = (data: Buffer) => {
+                const lines = data.toString().split('\n')
+                for (const line of lines) {
+                    const trimmed = line.trim()
+                    console.log(`[CanonHelper liveview] stdout: ${trimmed}`)
+                    if (trimmed === 'STATUS:LV_STOPPED') {
+                        resolved = true
+                        cleanup()
+                        resolve(true)
+                        break
+                    } else if (trimmed.startsWith('ERROR:')) {
+                        resolved = true
+                        cleanup()
+                        resolve(false)
+                        break
+                    }
+                }
             }
-            return null
-        } catch {
-            return null
+
+            const cleanup = () => {
+                helper.stdout?.removeListener('data', stdoutListener)
+            }
+
+            helper.stdout?.on('data', stdoutListener)
+
+            // 5 seconds timeout
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true
+                    cleanup()
+                    console.warn('[CanonEDSDK] Timeout waiting for live view stop')
+                    resolve(false)
+                }
+            }, 5000)
+
+            console.log('[CanonEDSDK] Stopping live view...')
+            helper.stdin?.write('STOP_LV\n')
+            this.liveViewActive = false
+        })
+    }
+
+    async startPolling(): Promise<boolean> {
+        if (!this.helperProcess) return false
+
+        return new Promise<boolean>((resolve) => {
+            const helper = this.helperProcess!
+            let resolved = false
+
+            const stdoutListener = (data: Buffer) => {
+                const lines = data.toString().split('\n')
+                for (const line of lines) {
+                    const trimmed = line.trim()
+                    console.log(`[CanonHelper polling] stdout: ${trimmed}`)
+                    if (trimmed === 'STATUS:POLLING_STARTED') {
+                        resolved = true
+                        cleanup()
+                        resolve(true)
+                        break
+                    } else if (trimmed.startsWith('ERROR:')) {
+                        resolved = true
+                        cleanup()
+                        resolve(false)
+                        break
+                    }
+                }
+            }
+
+            const cleanup = () => {
+                helper.stdout?.removeListener('data', stdoutListener)
+            }
+
+            helper.stdout?.on('data', stdoutListener)
+
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true
+                    cleanup()
+                    console.warn('[CanonEDSDK] Timeout waiting for polling start')
+                    resolve(false)
+                }
+            }, 3000)
+
+            console.log('[CanonEDSDK] Starting USB live view polling in helper...')
+            helper.stdin?.write('START_POLLING\n')
+        })
+    }
+
+    async stopPolling(): Promise<boolean> {
+        if (!this.helperProcess) return false
+
+        return new Promise<boolean>((resolve) => {
+            const helper = this.helperProcess!
+            let resolved = false
+
+            const stdoutListener = (data: Buffer) => {
+                const lines = data.toString().split('\n')
+                for (const line of lines) {
+                    const trimmed = line.trim()
+                    console.log(`[CanonHelper polling] stdout: ${trimmed}`)
+                    if (trimmed === 'STATUS:POLLING_STOPPED') {
+                        resolved = true
+                        cleanup()
+                        resolve(true)
+                        break
+                    } else if (trimmed.startsWith('ERROR:')) {
+                        resolved = true
+                        cleanup()
+                        resolve(false)
+                        break
+                    }
+                }
+            }
+
+            const cleanup = () => {
+                helper.stdout?.removeListener('data', stdoutListener)
+            }
+
+            helper.stdout?.on('data', stdoutListener)
+
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true
+                    cleanup()
+                    console.warn('[CanonEDSDK] Timeout waiting for polling stop')
+                    resolve(false)
+                }
+            }, 3000)
+
+            console.log('[CanonEDSDK] Stopping USB live view polling in helper...')
+            helper.stdin?.write('STOP_POLLING\n')
+        })
+    }
+
+    async getLiveViewFrame(): Promise<string | null> {
+        if (existsSync(this.liveViewTempPath)) {
+            try {
+                const size = require('fs').statSync(this.liveViewTempPath).size
+                if (size > 100) {
+                    return this.liveViewTempPath
+                }
+            } catch {}
         }
+        return null
     }
 
     /**
@@ -872,7 +892,125 @@ try {
      * For EDSDK, we use a temp file that gets updated by polling.
      */
     getLiveViewUrl(): string {
-        return `file:///${this.liveViewTempPath.replace(/\\/g, '/')}`
+        return 'http://localhost:5050/api/camera/liveview'
+    }
+
+    private recordingTimer: NodeJS.Timeout | null = null
+    private recordedFrames: Buffer[] = []
+    private recordingSlotId: string | null = null
+
+    async startRecordingLivePhoto(slotId: string): Promise<boolean> {
+        if (!this.helperProcess) return false
+        
+        console.log(`[CanonEDSDK] Starting memory-buffered Live Photo recording for slot: ${slotId}`)
+        
+        // Start helper polling in TFT mode if capture card is active
+        const hasCaptureCard = !!configService.getConfig().selectedCameraId
+        if (hasCaptureCard) {
+            await this.startPolling()
+        }
+        
+        this.recordedFrames = []
+        this.recordingSlotId = slotId
+        
+        // Start reading the edsdk_liveview.jpg frame to memory unconditionally every 42ms (24 FPS)
+        this.recordingTimer = setInterval(() => {
+            const liveViewFile = this.liveViewTempPath
+            if (existsSync(liveViewFile)) {
+                try {
+                    const buf = readFileSync(liveViewFile)
+                    if (buf.length > 100) {
+                        this.recordedFrames.push(buf)
+                    }
+                } catch (e) {
+                    // Ignore transient read locks
+                }
+            }
+        }, 42) // Poll every 42ms (exactly 24 FPS)
+        
+        return true
+    }
+
+    async stopRecordingLivePhoto(slotId: string): Promise<string | null> {
+        console.log(`[CanonEDSDK] Stopping Live Photo recording for slot: ${slotId}`)
+        
+        if (this.recordingTimer) {
+            clearInterval(this.recordingTimer)
+            this.recordingTimer = null
+        }
+        
+        // Stop helper polling in TFT mode if capture card is active
+        const hasCaptureCard = !!configService.getConfig().selectedCameraId
+        if (hasCaptureCard) {
+            await this.stopPolling()
+        }
+        
+        const frames = this.recordedFrames
+        this.recordedFrames = []
+        const currentSlotId = this.recordingSlotId || slotId
+        this.recordingSlotId = null
+        
+        const framesCount = frames.length
+        if (framesCount === 0) {
+            console.warn('[CanonEDSDK] No frames recorded in memory for live photo')
+            return null
+        }
+
+        console.log(`[CanonEDSDK] Recorded ${framesCount} frames in memory. Writing to disk for compilation...`)
+        
+        // Ensure clean directory for this slot's frames
+        const tempDir = join(app.getPath('userData'), 'temp', `recording_${currentSlotId}`)
+        try {
+            if (existsSync(tempDir)) {
+                rmSync(tempDir, { recursive: true, force: true })
+            }
+            mkdirSync(tempDir, { recursive: true })
+            
+            // Batch write frames to disk
+            for (let i = 0; i < framesCount; i++) {
+                writeFileSync(join(tempDir, `frame_${i}.jpg`), frames[i])
+            }
+        } catch (e: any) {
+            console.error('[CanonEDSDK] Failed to write frames to disk:', e.message)
+            return null
+        }
+        
+        // Compile the frames using FFmpeg
+        const outputPath = join(app.getPath('userData'), 'temp', `live_photo_${currentSlotId}_${Date.now()}.mp4`)
+        
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const fps = 24 // Exactly 24 FPS
+                
+                ffmpeg()
+                    .input(join(tempDir, 'frame_%d.jpg'))
+                    .inputOptions([`-framerate ${fps}`])
+                    .outputOptions([
+                        '-c:v libx264',
+                        '-preset veryfast',
+                        '-crf 28',
+                        '-pix_fmt yuv420p',
+                        '-movflags +faststart'
+                    ])
+                    .save(outputPath)
+                    .on('end', () => resolve())
+                    .on('error', (err: Error) => reject(err))
+            })
+            
+            console.log(`[CanonEDSDK] Compiled 24fps live photo video to: ${outputPath}`)
+            
+            // Clean up the temp frames directory asynchronously
+            setTimeout(() => {
+                try {
+                    rmSync(tempDir, { recursive: true, force: true })
+                } catch {}
+            }, 3000)
+            
+            return outputPath
+        } catch (error: any) {
+            console.error('[CanonEDSDK] Failed to compile live photo video:', error.message)
+            return null
+        }
     }
 
     /**
@@ -890,9 +1028,7 @@ try {
      * Shutdown the Canon EDSDK handler
      */
     async shutdown(): Promise<void> {
-        if (this.liveViewActive) {
-            try { await this.stopLiveView() } catch { /* ignore */ }
-        }
+        await this.disconnect()
 
         // Clean up temp live view file
         try {
@@ -901,9 +1037,6 @@ try {
             }
         } catch { /* ignore */ }
 
-        this.connected = false
-        this.currentCamera = null
-        this.detectedCameraName = ''
         console.log('[CanonEDSDK] Handler shutdown')
     }
 }

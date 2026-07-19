@@ -41,7 +41,12 @@ export class ConfigService {
         queueWebhookSecret: 'sebooth-queue-webhook-2026',
         queueApiUrl: 'https://www.sebooth.in',
         appOrientation: 'landscape',
-        mirrorOutput: false
+        mirrorOutput: false,
+        cameraZoom: 1.0,
+        cameraScaleX: 1.0,
+        cameraScaleY: 1.0,
+        cameraOffsetX: 0,
+        cameraOffsetY: 0
     }
 
     constructor() {

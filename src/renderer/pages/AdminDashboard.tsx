@@ -2310,6 +2310,47 @@ function AdminDashboard(): JSX.Element {
                                         {isLoadingDevices ? '🔄...' : '🔄 REFRESH'}
                                     </button>
                                 </div>
+
+                                {/* DSLR Live View Zoom slider */}
+                                <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--color-border)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                        <label style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>🔎 Zoom DSLR Live View</label>
+                                        <span style={{ fontSize: '14px', color: 'var(--color-text-secondary)', fontWeight: 'bold' }}>{Math.round((config.cameraZoom || 1.0) * 100)}%</span>
+                                    </div>
+                                    <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '0 0 10px 0' }}>
+                                        Perbesar gambar preview untuk memotong (crop) frame hitam atau pinggiran hitam di sekitar live view capture card.
+                                    </p>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                        <input 
+                                            type="range" 
+                                            min="1.0" 
+                                            max="2.0" 
+                                            step="0.01" 
+                                            value={config.cameraZoom || 1.0} 
+                                            onChange={(e) => updateConfig({ cameraZoom: parseFloat(e.target.value) })}
+                                            style={{
+                                                flex: 1,
+                                                cursor: 'pointer',
+                                                accentColor: '#3b82f6'
+                                            }}
+                                        />
+                                        <button
+                                            onClick={() => updateConfig({ cameraZoom: 1.0 })}
+                                            style={{
+                                                padding: '8px 15px',
+                                                fontSize: '12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid var(--color-border)',
+                                                background: 'var(--color-bg-secondary)',
+                                                color: 'white',
+                                                cursor: 'pointer',
+                                                fontWeight: 'bold'
+                                            }}
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

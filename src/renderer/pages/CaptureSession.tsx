@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useFrameStore, useSessionStore, useAppConfig, useCameraStore } from '../stores'
@@ -35,7 +35,7 @@ const playBeep = (freq = 800, duration = 150, vol = 0.5) => {
 function CaptureSession(): JSX.Element {
     const navigate = useNavigate()
     const { frames, activeFrame } = useFrameStore()
-    const { config } = useAppConfig()
+    const { config, updateConfig } = useAppConfig()
     const { photos, addPhoto, startSession, currentSession, endSession } = useSessionStore()
     const { isConnected } = useCameraStore()
 
@@ -48,6 +48,7 @@ function CaptureSession(): JSX.Element {
     const [isGalleryExpanded, setIsGalleryExpanded] = useState(false)
     const [reviewPhotoIndex, setReviewPhotoIndex] = useState(0)
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+    const [isAdjustPanelOpen, setIsAdjustPanelOpen] = useState(false)
 
     const videoRef = useRef<HTMLVideoElement>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -69,7 +70,9 @@ function CaptureSession(): JSX.Element {
     const currentFrame = activeFrame || frames[0]
 
     // Get only non-duplicate slots (these are the ones user needs to capture)
-    const captureSlots = currentFrame?.slots.filter(s => !s.duplicateOfSlotId) || []
+    const captureSlots = useMemo(() => {
+        return currentFrame?.slots.filter(s => !s.duplicateOfSlotId) || []
+    }, [currentFrame?.slots])
 
     // Derive aspect ratio from first capturable slot
     const slotAspectRatio = captureSlots[0]
@@ -115,26 +118,89 @@ function CaptureSession(): JSX.Element {
         setIsLoadingCamera(true)
         setCameraError(null)
 
+        // Stop any existing stream tracks first to release browser resource locks
+        if (streamRef.current) {
+            console.log('[CaptureSession] Stopping existing stream before re-initializing webcam...')
+            try {
+                streamRef.current.getTracks().forEach(track => track.stop())
+            } catch (e) {
+                console.warn('[CaptureSession] Failed to stop old stream tracks:', e)
+            }
+            streamRef.current = null
+        }
+
         try {
             // Check if mediaDevices is available
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 throw new Error('Camera API not supported in this browser')
             }
 
-            const videoConstraints: MediaTrackConstraints = {
-                width: { ideal: 1920, min: 640 },
-                height: { ideal: 1080, min: 480 },
+            let videoInputs: MediaDeviceInfo[] = []
+            // Log all available video devices for debugging device ID changes
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices()
+                videoInputs = devices.filter(d => d.kind === 'videoinput')
+                console.log('[CaptureSession] Available video devices:')
+                videoInputs.forEach((d, idx) => {
+                    console.log(`  [Device ${idx}] Label: "${d.label}", ID: "${d.deviceId}"`)
+                })
+                console.log(`[CaptureSession] Configured selectedCameraId: "${config.selectedCameraId}"`)
+            } catch (e) {
+                console.warn('[CaptureSession] Failed to enumerate devices in initWebcam:', e)
             }
 
+            let resolvedCameraId = config.selectedCameraId
+
+            // Fallback matching if the configured ID is not connected/available
             if (config.selectedCameraId) {
-                videoConstraints.deviceId = { exact: config.selectedCameraId }
+                const idExists = videoInputs.some(d => d.deviceId === config.selectedCameraId)
+                if (!idExists) {
+                    console.warn(`[CaptureSession] Configured capture card ID (${config.selectedCameraId}) not found. Searching by label...`)
+                    const match = videoInputs.find(d => {
+                        const label = d.label.toLowerCase()
+                        return label.includes('usb video') || label.includes('capture') || label.includes('hdmi') || label.includes('cam link')
+                    })
+                    if (match) {
+                        console.log(`[CaptureSession] Automatically matched capture card by label: "${match.label}" -> ID: "${match.deviceId}"`)
+                        resolvedCameraId = match.deviceId
+                    }
+                }
+            }
+
+            let videoConstraints: MediaTrackConstraints = {}
+
+            if (resolvedCameraId) {
+                videoConstraints.deviceId = { exact: resolvedCameraId }
+                // Use ideal values only without strict mins to prevent OverconstrainedError on capture cards
+                videoConstraints.width = { ideal: 1920 }
+                videoConstraints.height = { ideal: 1080 }
             } else {
+                videoConstraints.width = { ideal: 1920, min: 640 }
+                videoConstraints.height = { ideal: 1080, min: 480 }
                 videoConstraints.facingMode = 'user'
             }
 
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: videoConstraints
-            })
+            let stream: MediaStream
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: videoConstraints
+                })
+            } catch (innerError: any) {
+                if (resolvedCameraId && (innerError.name === 'OverconstrainedError' || innerError.name === 'NotFoundError' || innerError.name === 'DevicesNotFoundError')) {
+                    console.warn(`[CaptureSession] Resolved webcam ID (${resolvedCameraId}) not available/overconstrained. Error: ${innerError.name}. Falling back to default webcam...`)
+                    videoConstraints = {
+                        width: { ideal: 1920, min: 640 },
+                        height: { ideal: 1080, min: 480 },
+                        facingMode: 'user'
+                    }
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: videoConstraints
+                    })
+                } else {
+                    throw innerError
+                }
+            }
+
             streamRef.current = stream
             if (videoRef.current) {
                 videoRef.current.srcObject = stream
@@ -162,6 +228,12 @@ function CaptureSession(): JSX.Element {
 
     // Manage webcam stream based on captureState and cameraMode to prevent USB locks
     useEffect(() => {
+        // Do not initialize webcam if we are using native DSLR mode (edsdk/ptp) without a capture card
+        const isNativeDslr = (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk') && !config.selectedCameraId;
+        if (isNativeDslr) {
+            return;
+        }
+
         if (captureState === 'idle' || captureState === 'countdown') {
             if (!streamRef.current && !isLoadingCamera) {
                 console.log('[CaptureSession] Re-initializing webcam for state:', captureState)
@@ -177,7 +249,7 @@ function CaptureSession(): JSX.Element {
                 }
             }
         }
-    }, [captureState, config.cameraMode, config.selectedCameraId, initWebcam])
+    }, [captureState, config.cameraMode, config.selectedCameraId, initWebcam, isLoadingCamera])
 
     // Cleanup on unmount
     useEffect(() => {
@@ -192,52 +264,86 @@ function CaptureSession(): JSX.Element {
             if (digicamLiveViewTimer.current) {
                 clearInterval(digicamLiveViewTimer.current)
             }
-            // Only stop the camera live view if we did not select a dedicated preview device (capture card)
-            if (!config.selectedCameraId && (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk')) {
-                window.api.camera.stopLiveView().catch(() => {})
-            }
-        }
-    }, [])
-
-    // Auto-start digiCamControl live view when in PTP mode
-    useEffect(() => {
-        // Only auto-start digiCam/EDSDK live view when no capture-card preview device is selected
-        if (!config.selectedCameraId && (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk')) {
-            const startDigicamLiveView = async () => {
-                try {
-                    await window.api.camera.startLiveView()
-                    const urlResult = await window.api.camera.getLiveViewUrl()
-                    if (urlResult.success && urlResult.data) {
-                        setDigicamLiveViewUrl(urlResult.data)
-                        // Poll for new frames
-                        if (digicamLiveViewTimer.current) clearInterval(digicamLiveViewTimer.current)
-                        digicamLiveViewTimer.current = setInterval(() => {
-                            setDigicamLiveViewKey(k => k + 1)
-                        }, 150)
-                    }
-                } catch (e) {
-                    console.error('[CaptureSession] Failed to start digiCamControl live view:', e)
+            // Stop the camera live view to release mirror/resources
+            // BUT: Only stop live view if we are actually navigating away from the capture page,
+            // to prevent mirror drop and COM port resets during component re-renders/HMR.
+            if (config.cameraMode === 'edsdk' || config.cameraMode === 'ptp') {
+                const isStillOnCapture = window.location.pathname === '/capture' || window.location.hash.startsWith('#/capture');
+                if (!isStillOnCapture) {
+                    console.log('[CaptureSession] Navigating away from /capture. Stopping DSLR live view...');
+                    window.api.camera.stopLiveView().catch(() => {})
+                } else {
+                    console.log('[CaptureSession] Component unmounted/re-rendered on same route. Keeping DSLR live view active.');
                 }
-                setIsLoadingCamera(false)
-            }
-            startDigicamLiveView()
-        }
-
-        return () => {
-            if (digicamLiveViewTimer.current) {
-                clearInterval(digicamLiveViewTimer.current)
-                digicamLiveViewTimer.current = null
             }
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [config.cameraMode])
 
-    // If a specific preview device (capture card) is selected, ensure the webcam stream is initialized
+    // Unified camera and live preview stream initialization sequence
     useEffect(() => {
-        if (config.selectedCameraId) {
-            // Initialize or re-initialize webcam to use the selected device for preview
-            initWebcam().catch(err => console.warn('[CaptureSession] initWebcam error for selectedCameraId:', err))
-        }
-    }, [config.selectedCameraId, initWebcam])
+        let active = true;
+
+        const initializeCamera = async () => {
+            setIsLoadingCamera(true);
+            setCameraError(null);
+
+            const isDslr = config.cameraMode === 'edsdk' || config.cameraMode === 'ptp';
+            const hasCaptureCard = !!config.selectedCameraId;
+
+            try {
+                // Step 1: Start DSLR Live View first to establish HDMI signal before opening capture card stream
+                if (isDslr) {
+                    console.log('[CaptureSession] Unified Init: Starting DSLR Live View...');
+                    await window.api.camera.startLiveView();
+                    
+                    // Delay to let the HDMI transmitter/capture card hardware stabilize the video signal
+                    if (hasCaptureCard) {
+                        console.log('[CaptureSession] Unified Init: Waiting for HDMI signal stability (2000ms)...');
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                }
+
+                if (!active) return;
+
+                // Step 2: Initialize Web Video Stream (Capture Card or Webcam)
+                if (hasCaptureCard || !isDslr) {
+                    console.log('[CaptureSession] Unified Init: Initializing webcam/capture card stream...');
+                    await initWebcam();
+                } else if (isDslr && !hasCaptureCard) {
+                    // DSLR mode without capture card: start USB image polling
+                    console.log('[CaptureSession] Unified Init: Starting USB live view polling...');
+                    const urlResult = await window.api.camera.getLiveViewUrl();
+                    if (urlResult.success && urlResult.data) {
+                        setDigicamLiveViewUrl(urlResult.data);
+                        // Poll for new frames
+                        if (digicamLiveViewTimer.current) clearInterval(digicamLiveViewTimer.current);
+                        digicamLiveViewTimer.current = setInterval(() => {
+                            setDigicamLiveViewKey(k => k + 1);
+                        }, 150);
+                    }
+                }
+            } catch (error: any) {
+                console.error('[CaptureSession] Unified Init Error:', error);
+                setCameraError(error.message || 'Gagal memuat preview kamera');
+            } finally {
+                if (active) {
+                    setIsLoadingCamera(false);
+                }
+            }
+        };
+
+        initializeCamera();
+
+        return () => {
+            active = false;
+            if (digicamLiveViewTimer.current) {
+                clearInterval(digicamLiveViewTimer.current);
+                digicamLiveViewTimer.current = null;
+            }
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [config.cameraMode, config.selectedCameraId, initWebcam])
 
     // Find next empty slot (skips duplicate slots)
     const getNextEmptySlot = useCallback(() => {
@@ -297,7 +403,15 @@ function CaptureSession(): JSX.Element {
         setCountdown(config.countdownDuration)
 
         // Start video recording for Live Photo
-        if (streamRef.current && !mediaRecorderRef.current) {
+        const useUsbLivePhoto = config.cameraMode === 'edsdk';
+        const slot = currentFrame.slots[slotIndex];
+
+        if (useUsbLivePhoto) {
+            console.log('[CaptureSession] Starting clean USB Live Photo recording...');
+            window.api.camera.startRecordingLivePhoto(slot.id).catch((err: any) => {
+                console.error('[CaptureSession] Failed to start USB Live Photo recording:', err);
+            });
+        } else if (streamRef.current && !mediaRecorderRef.current) {
             try {
                 // Find supported mimeType for this browser
                 const mimeTypes = [
@@ -375,11 +489,23 @@ function CaptureSession(): JSX.Element {
             setTimeout(async () => {
                 let dataUrl: string | null = null;
 
+                console.log('[CaptureSession] Capture flow started. Config:', {
+                    cameraMode: config.cameraMode,
+                    selectedCameraId: config.selectedCameraId,
+                    slotId: slot?.id
+                });
+
                 // Attempt native DSLR capture first (skip for webcam/mock mode)
                 try {
                     if (config.cameraMode !== 'mock') {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const windowApi = (window as any).api;
+                        console.log('[CaptureSession] Checking API availability:', {
+                            hasWindowApi: !!windowApi,
+                            hasCamera: !!windowApi?.camera,
+                            hasCapture: !!windowApi?.camera?.capture
+                        });
+                        
                         if (windowApi && windowApi.camera && windowApi.camera.capture) {
                             // Synchronously stop the webcam stream to release PTP lock on DSLR USB.
                             // Do not stop the selected capture-card preview device, since it should remain active.
@@ -392,43 +518,56 @@ function CaptureSession(): JSX.Element {
                                 }
                             }
                             
-                            const captureOptions = config.selectedCameraId ? { allowLiveViewFallback: false } : undefined;
+                            // Always disable LiveView fallback for DSLR to avoid preview screenshots
+                            const captureOptions = { allowLiveViewFallback: false };
+                            console.log('[CaptureSession] Invoking camera.capture with options:', captureOptions);
+                            
+                            const captureStartTime = performance.now()
                             const captureRes = await windowApi.camera.capture(slot?.id, captureOptions);
+                            const elapsedMs = (performance.now() - captureStartTime).toFixed(0)
+                            
+                            console.log(`[CaptureSession] ✅ Capture response received after ${elapsedMs}ms:`, {
+                                success: captureRes.success,
+                                hasData: !!captureRes.data,
+                                imagePath: captureRes.data?.imagePath,
+                                resultTimestamp: captureRes.data?.timestamp,
+                                error: captureRes.error
+                            });
+                            
                             if (captureRes.success && captureRes.data && captureRes.data.imagePath) {
-                                // Convert physical path to local file URL
-                                dataUrl = `file:///${captureRes.data.imagePath.replace(/\\/g, '/')}`;
+                                // Convert to base64 data URL by reading the file via IPC
+                                // This avoids CORS/sandbox issues with file:// URLs in Electron
+                                try {
+                                    console.log('[CaptureSession] Reading captured image to base64:', captureRes.data.imagePath);
+                                    const base64Res = await windowApi.system.readFileAsBase64(captureRes.data.imagePath);
+                                    if (base64Res.success && base64Res.data) {
+                                        // Convert base64 to data URL with proper MIME type
+                                        dataUrl = `data:image/jpeg;base64,${base64Res.data}`;
+                                        console.log('[CaptureSession] ✅ Successfully loaded DSLR photo as base64');
+                                    } else {
+                                        console.warn('[CaptureSession] Failed to read file as base64:', base64Res.error);
+                                    }
+                                } catch (e) {
+                                    console.warn('[CaptureSession] Error reading file as base64:', e);
+                                }
+                            } else {
+                                console.warn('[CaptureSession] Capture not successful or missing data. Attempting fallback to webcam.');
                             }
+                        } else {
+                            console.warn('[CaptureSession] API not available. Falling back to webcam.');
                         }
+                    } else {
+                        console.log('[CaptureSession] Camera mode is mock, skipping DSLR capture');
                     }
                 } catch (e) {
-                    console.warn('Native camera capture failed, falling back to webcam:', e);
+                    console.error('[CaptureSession] ❌ Native camera capture threw exception (possible timeout/hang):', e);
                 }
 
-                // Fallback to webcam screenshot if native capture failed or is unavailable
                 if (!dataUrl) {
-                    console.warn('[CaptureSession] Native capture failed, attempting webcam fallback');
-                    // If we stopped the webcam, restart it briefly to capture fallback
-                    if (config.cameraMode !== 'mock' && !streamRef.current) {
-                        try {
-                            const videoConstraints: MediaTrackConstraints = {
-                                width: { ideal: 1920 },
-                                height: { ideal: 1080 }
-                            };
-                            if (config.selectedCameraId) {
-                                videoConstraints.deviceId = { exact: config.selectedCameraId };
-                            }
-                            const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
-                            streamRef.current = stream;
-                            if (videoRef.current) {
-                                videoRef.current.srcObject = stream;
-                            }
-                            // Wait a short moment for webcam to initialize
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                        } catch (err) {
-                            console.error('Failed to restart webcam for fallback:', err);
-                        }
-                    }
-                    dataUrl = captureFromWebcam()
+                    console.error('[CaptureSession] DSLR Capture failed and fallback is disabled.');
+                    setCameraError('Gagal mengambil foto dari DSLR Canon. Pastikan kamera menyala, terhubung, dan tidak dalam mode sleep.');
+                    setCaptureState('idle');
+                    return;
                 }
 
                 if (dataUrl) {
@@ -459,7 +598,26 @@ function CaptureSession(): JSX.Element {
         }
 
         // Stop video recording and get video data URL
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        const useUsbLivePhoto = config.cameraMode === 'edsdk';
+
+        if (useUsbLivePhoto) {
+            console.log('[CaptureSession] Stopping clean USB Live Photo recording...');
+            window.api.camera.stopRecordingLivePhoto(slot.id)
+                .then((res: any) => {
+                    if (res.success && res.data) {
+                        const videoUrl = `file:///${res.data.replace(/\\/g, '/')}`;
+                        console.log('[CaptureSession] Clean USB Live Photo recorded:', videoUrl);
+                        completeCapture(videoUrl);
+                    } else {
+                        console.warn('[CaptureSession] Clean USB Live Photo recording failed or returned empty');
+                        completeCapture();
+                    }
+                })
+                .catch((err: any) => {
+                    console.error('[CaptureSession] Error compiling USB Live Photo:', err);
+                    completeCapture();
+                });
+        } else if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
             const recorder = mediaRecorderRef.current
 
             // Set up onstop to create blob after all data is collected
@@ -594,6 +752,20 @@ function CaptureSession(): JSX.Element {
         )
     }
 
+    // Custom camera preview adjustments
+    const zoomVal = config.cameraZoom || 1.0;
+    const offsetX = config.cameraOffsetX || 0;
+    const offsetY = config.cameraOffsetY || 0;
+    const scaleYVal = config.cameraScaleY !== undefined ? config.cameraScaleY : 1.0;
+    
+    // For capture card video (with default 0.75 squeeze correction if not overridden)
+    const scaleXCardVal = config.cameraScaleX !== undefined ? config.cameraScaleX : (config.selectedCameraId ? 0.75 : 1.0);
+    // For standard webcam/image preview (default 1.0)
+    const scaleXStandardVal = config.cameraScaleX !== undefined ? config.cameraScaleX : 1.0;
+
+    const captureCardTransform = `translate(${offsetX}px, ${offsetY}px) scaleX(${-1 * scaleXCardVal * zoomVal}) scaleY(${scaleYVal * zoomVal})`;
+    const standardTransform = `translate(${offsetX}px, ${offsetY}px) scaleX(${-1 * scaleXStandardVal * zoomVal}) scaleY(${scaleYVal * zoomVal})`;
+
     return (
         <motion.div
             className={styles.container}
@@ -633,6 +805,33 @@ function CaptureSession(): JSX.Element {
                 ← Kembali
             </motion.button>
 
+            {/* Gear Button for Live View adjustment */}
+            <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                onClick={() => setIsAdjustPanelOpen(!isAdjustPanelOpen)}
+                title="Adjust Live View"
+                style={{
+                    position: 'fixed',
+                    top: '20px',
+                    right: '20px',
+                    padding: '6px 12px',
+                    backgroundColor: '#f8f9fa',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    zIndex: 100,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 'bold',
+                    color: '#333'
+                }}
+            >
+                ⚙️ {isAdjustPanelOpen ? 'Tutup Atur' : 'Atur Live View'}
+            </motion.button>
+
             {/* Main Capture Area */}
             <div className={styles.captureArea}>
                 {/* Controls Bar - No back button to prevent timer circumvention */}
@@ -664,6 +863,9 @@ function CaptureSession(): JSX.Element {
                             playsInline
                             muted
                             className={styles.video}
+                            style={{
+                                transform: captureCardTransform
+                            }}
                         />
                     ) : ( (config.cameraMode === 'ptp' || config.cameraMode === 'edsdk') && digicamLiveViewUrl ? (
                         <img
@@ -671,7 +873,10 @@ function CaptureSession(): JSX.Element {
                             src={`${digicamLiveViewUrl}?t=${digicamLiveViewKey}`}
                             alt="Live View"
                             className={styles.video}
-                            style={{ objectFit: 'cover' }}
+                            style={{
+                                objectFit: 'cover',
+                                transform: standardTransform
+                            }}
                             onError={(e) => {
                                 (e.target as HTMLImageElement).style.opacity = '0.3'
                             }}
@@ -686,6 +891,9 @@ function CaptureSession(): JSX.Element {
                             playsInline
                             muted
                             className={styles.video}
+                            style={{
+                                transform: standardTransform
+                            }}
                         />
                     ))}
 
@@ -787,13 +995,6 @@ function CaptureSession(): JSX.Element {
                         </motion.button>
                     </div>
                 )}
-
-                    {/* Safe area overlay: left/right black bars and transparent center */}
-                    <div className={styles.safeAreaOverlay} aria-hidden>
-                        <div className={styles.leftBar} style={{ width: safeArea.left }} />
-                        <div className={styles.rightBar} style={{ left: safeArea.left + safeArea.width, width: safeArea.left }} />
-                        <div className={styles.centerBox} style={{ left: safeArea.left, top: safeArea.top, width: safeArea.width, height: safeArea.height }} />
-                    </div>
             </div>
 
             {/* Floating Photo Gallery Overlay */}
@@ -996,6 +1197,163 @@ function CaptureSession(): JSX.Element {
                     navigate('/')
                 }}
             />
+
+            {/* Live View Adjustment Panel */}
+            <AnimatePresence>
+                {isAdjustPanelOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, x: 300 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 300 }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        style={{
+                            position: 'fixed',
+                            top: '80px',
+                            right: '20px',
+                            width: '320px',
+                            backgroundColor: 'rgba(26, 26, 46, 0.95)',
+                            backdropFilter: 'blur(10px)',
+                            border: '2px solid var(--clay-yellow)',
+                            borderRadius: '16px',
+                            padding: '20px',
+                            zIndex: 99,
+                            color: '#FFFFFF',
+                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
+                        }}
+                    >
+                        <h3 style={{ margin: '0 0 15px 0', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            ⚙️ Pengaturan Live View
+                        </h3>
+
+                        {/* Zoom Slider */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                                <label>🔎 Zoom (Uniform)</label>
+                                <span>{Math.round((config.cameraZoom || 1.0) * 100)}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="1.0"
+                                max="3.0"
+                                step="0.05"
+                                value={config.cameraZoom || 1.0}
+                                onChange={(e) => updateConfig({ cameraZoom: parseFloat(e.target.value) })}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                            />
+                        </div>
+
+                        {/* Scale X Slider */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                                <label>↔️ Lebar Video (Scale X)</label>
+                                <span>{Math.round((config.cameraScaleX !== undefined ? config.cameraScaleX : (config.selectedCameraId ? 0.75 : 1.0)) * 100)}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0.5"
+                                max="2.0"
+                                step="0.01"
+                                value={config.cameraScaleX !== undefined ? config.cameraScaleX : (config.selectedCameraId ? 0.75 : 1.0)}
+                                onChange={(e) => updateConfig({ cameraScaleX: parseFloat(e.target.value) })}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                            />
+                        </div>
+
+                        {/* Scale Y Slider */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                                <label>↕️ Tinggi Video (Scale Y)</label>
+                                <span>{Math.round((config.cameraScaleY !== undefined ? config.cameraScaleY : 1.0) * 100)}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0.5"
+                                max="2.0"
+                                step="0.01"
+                                value={config.cameraScaleY !== undefined ? config.cameraScaleY : 1.0}
+                                onChange={(e) => updateConfig({ cameraScaleY: parseFloat(e.target.value) })}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                            />
+                        </div>
+
+                        {/* Offset X Slider */}
+                        <div style={{ marginBottom: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                                <label>⬅️➡️ Geser Horizontal (X)</label>
+                                <span>{config.cameraOffsetX || 0}px</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="-400"
+                                max="400"
+                                step="1"
+                                value={config.cameraOffsetX || 0}
+                                onChange={(e) => updateConfig({ cameraOffsetX: parseInt(e.target.value) })}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                            />
+                        </div>
+
+                        {/* Offset Y Slider */}
+                        <div style={{ marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                                <label>⬆️⬇️ Geser Vertikal (Y)</label>
+                                <span>{config.cameraOffsetY || 0}px</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="-400"
+                                max="400"
+                                step="1"
+                                value={config.cameraOffsetY || 0}
+                                onChange={(e) => updateConfig({ cameraOffsetY: parseInt(e.target.value) })}
+                                style={{ width: '100%', cursor: 'pointer' }}
+                            />
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                onClick={() => updateConfig({
+                                    cameraZoom: 1.0,
+                                    cameraScaleX: config.selectedCameraId ? 0.75 : 1.0,
+                                    cameraScaleY: 1.0,
+                                    cameraOffsetX: 0,
+                                    cameraOffsetY: 0
+                                })}
+                                style={{
+                                    flex: 1,
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid rgba(255,255,255,0.2)',
+                                    background: 'transparent',
+                                    color: '#FFF',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    fontSize: '12px'
+                                }}
+                            >
+                                Reset
+                            </button>
+                            <button
+                                onClick={() => setIsAdjustPanelOpen(false)}
+                                style={{
+                                    flex: 1,
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: 'var(--clay-yellow)',
+                                    color: '#1A1A2E',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    fontSize: '12px'
+                                }}
+                            >
+                                Selesai
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
     )
 }

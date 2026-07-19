@@ -26,6 +26,17 @@ export function startLocalServer(port = 5050) {
     // Serve the React Admin Dashboard (Vite Build) statically
     server.use(express.static(join(__dirname, '../renderer')))
 
+    // Endpoint for serving Canon DSLR Live View frames from temp directory
+    server.get('/api/camera/liveview', (req, res) => {
+        const liveViewPath = join(app.getPath('userData'), 'temp', 'edsdk_liveview.jpg')
+        if (existsSync(liveViewPath)) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+            res.sendFile(liveViewPath)
+        } else {
+            res.status(404).send('No live view frame available')
+        }
+    })
+
     // Helper: find session folder by sessionId (supports both Session_<id> and Session_<email>_<id>)
     function findSessionFolder(sessionId: string): string | null {
         // Try exact match first

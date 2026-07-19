@@ -161,6 +161,11 @@ export interface AppConfig {
     // Layout Settings
     appOrientation: 'landscape' | 'portrait' // Screen/App layout orientation
     mirrorOutput: boolean // Toggle to mirror output by default
+    cameraZoom?: number // DSLR Live View zoom level (1.0 to 2.0)
+    cameraScaleX?: number // Custom horizontal scale
+    cameraScaleY?: number // Custom vertical scale
+    cameraOffsetX?: number // Custom X offset in px
+    cameraOffsetY?: number // Custom Y offset in px
 }
 
 export interface LUTFilter {

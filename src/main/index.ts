@@ -46,6 +46,13 @@ function createWindow(): void {
         mainWindow?.show()
     })
 
+    // Forward renderer console logs to the main process terminal for easier debugging
+    mainWindow.webContents.on('console-message', (_, level, message, line, sourceId) => {
+        const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+        const file = sourceId.split('/').pop()?.split('\\').pop() || sourceId;
+        console.log(`[Renderer ${levels[level] || 'LOG'}] (${file}:${line}) ${message}`);
+    })
+
     mainWindow.webContents.setWindowOpenHandler((details) => {
         shell.openExternal(details.url)
         return { action: 'deny' }

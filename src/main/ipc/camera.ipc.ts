@@ -15,6 +15,8 @@ let cameraHandler: CameraHandler = isDev
     ? new MockCamera()
     : new GPhotoCamera()
 
+let isCapturingActive = false
+
 /**
  * Switch camera handler implementation
  */
@@ -69,15 +71,22 @@ export function registerCameraHandlers(ipcMain: IpcMain): void {
 
     // Capture a photo
     ipcMain.handle('camera:capture', async (_, slotId?: string, options?: any): Promise<APIResponse<CaptureResult>> => {
+        if (isCapturingActive) {
+            console.warn('[Camera IPC] Blocked concurrent capture request!')
+            return { success: false, error: 'A capture is already in progress' }
+        }
+        isCapturingActive = true
+        const captureStartTime = Date.now()
         try {
             const handlerName = cameraHandler.constructor.name
-            console.log(`[Camera IPC] Capture requested. Active handler: ${handlerName}`)
+            console.log(`[Camera IPC] 🟢 CAPTURE STARTED. Handler: ${handlerName}, SlotId: ${slotId}`)
             
             const filename = `capture_${slotId || uuidv4()}_${Date.now()}.jpg`
             const outputPath = join(getTempPath(), filename)
 
             const result = await (cameraHandler as any).capture(outputPath, options)
-            console.log(`[Camera IPC] Capture result:`, { success: result.success, imagePath: result.imagePath, error: result.error })
+            const elapsedMs = Date.now() - captureStartTime
+            console.log(`[Camera IPC] 🟢 CAPTURE COMPLETED in ${elapsedMs}ms:`, { success: result.success, imagePath: result.imagePath, error: result.error })
 
             if (!result.success && cameraHandler.constructor.name === 'GPhotoCamera' && result.error?.includes('not found')) {
                 console.warn('[Camera IPC] GPhoto fallback could not capture; returning actionable error')
@@ -85,9 +94,12 @@ export function registerCameraHandlers(ipcMain: IpcMain): void {
 
             return { success: result.success, data: result, error: result.error }
         } catch (error) {
+            const elapsedMs = Date.now() - captureStartTime
             const err = error as Error
-            console.error(`[Camera IPC] Capture error:`, err.message)
+            console.error(`[Camera IPC] ❌ CAPTURE ERROR after ${elapsedMs}ms:`, err.message)
             return { success: false, error: err.message }
+        } finally {
+            isCapturingActive = false
         }
     })
 
@@ -141,8 +153,23 @@ export function registerCameraHandlers(ipcMain: IpcMain): void {
         if (cameraHandler && 'shutdown' in cameraHandler) {
             await (cameraHandler as any).shutdown()
         }
-        cameraHandler = new CanonEDSDKCamera()
+        const handler = new CanonEDSDKCamera()
+        cameraHandler = handler
         console.log('[Camera IPC] Switched to Canon EDSDK Camera (Native Canon SDK mode)')
+
+        // Auto-connect: spawn the persistent CanonHelper.exe process immediately
+        // so that live view and capture work without a separate connect step.
+        try {
+            const connected = await handler.connect('canon_edsdk_0')
+            if (connected) {
+                console.log('[Camera IPC] Canon EDSDK auto-connected successfully')
+            } else {
+                console.warn('[Camera IPC] Canon EDSDK auto-connect returned false')
+            }
+        } catch (err: any) {
+            console.error('[Camera IPC] Canon EDSDK auto-connect failed:', err.message)
+        }
+
         return { success: true }
     })
 
@@ -221,6 +248,30 @@ export function registerCameraHandlers(ipcMain: IpcMain): void {
                 return { success: true, data: url }
             }
             return { success: false, error: 'Current camera handler does not support live view' }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
+    })
+
+    ipcMain.handle('camera:start-recording-live-photo', async (_, slotId: string): Promise<APIResponse<boolean>> => {
+        try {
+            if ('startRecordingLivePhoto' in cameraHandler) {
+                const res = await (cameraHandler as any).startRecordingLivePhoto(slotId)
+                return { success: true, data: res }
+            }
+            return { success: true, data: false }
+        } catch (error: any) {
+            return { success: false, error: error.message }
+        }
+    })
+
+    ipcMain.handle('camera:stop-recording-live-photo', async (_, slotId: string): Promise<APIResponse<string | null>> => {
+        try {
+            if ('stopRecordingLivePhoto' in cameraHandler) {
+                const videoPath = await (cameraHandler as any).stopRecordingLivePhoto(slotId)
+                return { success: true, data: videoPath }
+            }
+            return { success: true, data: null }
         } catch (error: any) {
             return { success: false, error: error.message }
         }

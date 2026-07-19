@@ -59,7 +59,13 @@ const api = {
             ipcRenderer.invoke('camera:stop-liveview'),
 
         getLiveViewUrl: (): Promise<APIResponse<string>> =>
-            ipcRenderer.invoke('camera:get-liveview-url')
+            ipcRenderer.invoke('camera:get-liveview-url'),
+
+        startRecordingLivePhoto: (slotId: string): Promise<APIResponse<boolean>> =>
+            ipcRenderer.invoke('camera:start-recording-live-photo', slotId),
+
+        stopRecordingLivePhoto: (slotId: string): Promise<APIResponse<string | null>> =>
+            ipcRenderer.invoke('camera:stop-recording-live-photo', slotId)
     },
 
     // Printer APIs
