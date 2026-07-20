@@ -161,13 +161,4 @@ The AI Agent is explicitly authorized and encouraged to access, analyze, and mod
 - **Juli 2026 (Live Photo Frame Freeze & Camera Viewfinder Fallback Fix)** ✅: Fixed the Live Photo video freeze and camera LCD turning off after taking a photo: (1) Updated `Main()` and `HandleStartLiveView()` in `CanonHelper.cs` to always set `LiveViewDevice = (EosLiveViewDevice)3` (Both Camera and Host) and set `_liveViewTftMode = true`, ensuring the camera LCD always stays ON post-capture. (2) Removed filesystem `mtimeMs` resolution-based duplicate check in `CanonEDSDKCamera.ts` frame-polling interval, replacing it with an unconditional 100ms (10 FPS) copy interval to guarantee smooth playback and prevent FFmpeg compilation failures.
 - **Juli 2026 (Live Photo Smooth 24fps Memory-Buffered Recording)** ✅: Resolved choppy/low-FPS Live Photo video: (1) Replaced C# timer with a background STA thread in `CanonHelper.cs` polling at 30ms (~33 FPS). (2) Redesigned `CanonEDSDKCamera.ts` to poll frame data into a memory RAM buffer array every 42ms (24 FPS) instead of writing physical files to disk during the capture countdown. (3) Written buffered frames to disk in a batch post-capture and compiled into a smooth 24fps MP4 strip via FFmpeg, completely eliminating disk I/O lag.
 - **Juli 2026 (Perbaikan Live View Capture Card Pelangi / Rainbow Fix)** ✅: Memperbaiki masalah pratinjau live view capture card yang kembali menjadi pelangi (hilang sinyal HDMI) saat dalam kondisi siaga (idle). Masalah ini disebabkan oleh pembacaan kontinu frame USB (`GetLiveViewImage()`) pada helper C# yang mengunci port PTP kamera dan memutus aliran sinyal HDMI. Dilakukan perbaikan: (1) Memodifikasi `CanonHelper.cs` agar tidak otomatis menyalakan timer pratinjau USB saat masuk mode TFT (`START_LV_TFT`); (2) Menambahkan perintah kontrol stdin `START_POLLING` dan `STOP_POLLING` pada helper C# untuk menyalakan/mematikan pembacaan frame USB secara manual; (3) Memperbarui `CanonEDSDKCamera.ts` agar hanya memanggil perintah pooling tersebut selama hitung mundur pengambilan foto (proses Live Photo) berlangsung, lalu menonaktifkannya kembali saat selesai untuk membebaskan bandwidth CPU/USB kamera dan menjaga sinyal HDMI tetap bersih dan stabil pada capture card.
-
-
-
-
-
-
-
-
->>>>>>> update77/main
-
+- **Juli 2026 (Perbaikan Ambil Foto Mode Mock / Webcam)** ✅: Memperbaiki masalah di mana aplikasi tidak dapat mengambil foto saat sesi foto jika berada di mode mock camera / tanpa tethered kamera. Menambahkan pemanggilan fallback `captureFromWebcam()` di dalam `completeCapture()` di `CaptureSession.tsx` ketika `config.cameraMode === 'mock'`, serta mengisolasi detail pesan error-nya dari capture DSLR agar tidak menyesatkan.

@@ -596,8 +596,20 @@ function CaptureSession(): JSX.Element {
                 }
 
                 if (!dataUrl) {
-                    console.error('[CaptureSession] DSLR Capture failed and fallback is disabled.');
-                    setCameraError('Gagal mengambil foto dari DSLR Canon. Pastikan kamera menyala, terhubung, dan tidak dalam mode sleep.');
+                    if (config.cameraMode === 'mock') {
+                        console.log('[CaptureSession] Camera mode is mock, capturing from webcam...');
+                        dataUrl = captureFromWebcam();
+                    }
+                }
+
+                if (!dataUrl) {
+                    if (config.cameraMode === 'mock') {
+                        console.error('[CaptureSession] Mock camera/webcam capture failed.');
+                        setCameraError('Gagal mengambil foto dari kamera web/mock. Pastikan webcam terhubung dan aktif.');
+                    } else {
+                        console.error('[CaptureSession] DSLR Capture failed and fallback is disabled.');
+                        setCameraError('Gagal mengambil foto dari DSLR Canon. Pastikan kamera menyala, terhubung, dan tidak dalam mode sleep.');
+                    }
                     setCaptureState('idle');
                     return;
                 }
