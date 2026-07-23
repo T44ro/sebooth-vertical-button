@@ -13,6 +13,8 @@ import SharingPage from './pages/SharingPage'
 import PrintingPage from './pages/PrintingPage'
 import GalleryPage from './pages/GalleryPage'
 import QueueDisplay from './pages/QueueDisplay'
+import { PhysicalButtonIndicator } from './components/PhysicalButtonIndicator'
+import { LiveLayoutToolbar } from './components/LiveLayoutToolbar'
 
 function App(): JSX.Element {
     const { config } = useAppConfig()
@@ -67,6 +69,9 @@ function App(): JSX.Element {
                     <Route path="/gallery" element={<GalleryPage />} />
                 </Routes>
             </AnimatePresence>
+
+            <LiveLayoutToolbar />
+            <PhysicalButtonIndicator />
 
             <button
                 onClick={toggleFullScreen}

@@ -21,6 +21,16 @@ interface AppConfigState {
     config: AppConfig
     updateConfig: (updates: Partial<AppConfig>) => void
     resetConfig: () => void
+    isLayoutEditMode: boolean
+    setIsLayoutEditMode: (active: boolean) => void
+    showGridLines: boolean
+    setShowGridLines: (show: boolean) => void
+    showCenterLines: boolean
+    setShowCenterLines: (show: boolean) => void
+    showMarginGuides: boolean
+    setShowMarginGuides: (show: boolean) => void
+    enableMagneticSnap: boolean
+    setEnableMagneticSnap: (snap: boolean) => void
 }
 
 const defaultConfig: AppConfig = {
@@ -77,7 +87,21 @@ const defaultConfig: AppConfig = {
     cameraScaleX: 1.0,
     cameraScaleY: 1.0,
     cameraOffsetX: 0,
-    cameraOffsetY: 0
+    cameraOffsetY: 0,
+    // Physical Button Indicator Settings
+    buttonIndicatorEnabled: false,
+    buttonIndicatorText: 'TEKAN TOMBOL DI SINI ➔',
+    buttonIndicatorX: 80,
+    buttonIndicatorY: 50,
+    buttonIndicatorWidth: 260,
+    buttonIndicatorHeight: 70,
+    buttonIndicatorRotation: 0,
+    buttonIndicatorBgColor: '#ef4444',
+    buttonIndicatorTextColor: '#ffffff',
+    buttonIndicatorBorderColor: '#ffffff',
+    buttonIndicatorShape: 'pill',
+    buttonIndicatorPulse: true,
+    buttonIndicatorFontSize: 16
 }
 
 import { apiHelper } from '../lib/apiHelper'
@@ -95,6 +119,16 @@ export const useAppConfig = create<AppConfigState>((set) => {
 
     return {
         config: defaultConfig,
+        isLayoutEditMode: false,
+        setIsLayoutEditMode: (active) => set({ isLayoutEditMode: active }),
+        showGridLines: true,
+        setShowGridLines: (show) => set({ showGridLines: show }),
+        showCenterLines: true,
+        setShowCenterLines: (show) => set({ showCenterLines: show }),
+        showMarginGuides: true,
+        setShowMarginGuides: (show) => set({ showMarginGuides: show }),
+        enableMagneticSnap: true,
+        setEnableMagneticSnap: (snap) => set({ enableMagneticSnap: snap }),
         updateConfig: async (updates) => {
             // Optimistic update
             set((state) => ({ config: { ...state.config, ...updates } }))

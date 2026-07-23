@@ -181,6 +181,21 @@ export interface AppConfig {
     cameraScaleY?: number // Custom vertical scale
     cameraOffsetX?: number // Custom X offset in px
     cameraOffsetY?: number // Custom Y offset in px
+
+    // Physical Button Indicator Settings
+    buttonIndicatorEnabled?: boolean
+    buttonIndicatorText?: string
+    buttonIndicatorX?: number // position X in % (0 - 100)
+    buttonIndicatorY?: number // position Y in % (0 - 100)
+    buttonIndicatorWidth?: number // width in px
+    buttonIndicatorHeight?: number // height in px
+    buttonIndicatorRotation?: number // angle in degrees (0 - 360)
+    buttonIndicatorBgColor?: string
+    buttonIndicatorTextColor?: string
+    buttonIndicatorBorderColor?: string
+    buttonIndicatorShape?: 'pill' | 'rectangle' | 'badge' | 'arrow-right' | 'arrow-left' | 'arrow-down' | 'arrow-up'
+    buttonIndicatorPulse?: boolean
+    buttonIndicatorFontSize?: number
 }
 
 export interface LUTFilter {
@@ -288,4 +303,10 @@ export interface APIResponse<T> {
     success: boolean
     data?: T
     error?: string
+}
+
+declare global {
+    interface Window {
+        api: any
+    }
 }

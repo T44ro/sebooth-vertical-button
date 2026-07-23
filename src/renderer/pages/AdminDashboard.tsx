@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { apiHelper } from '../lib/apiHelper'
 import { getSessionHistory, SessionHistoryItem, getSupabase } from '../lib/supabase'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
+import { PhysicalButtonIndicator } from '../components/PhysicalButtonIndicator'
 import styles from './AdminDashboard.module.css'
 
 type DragMode = 'move' | 'resize-se' | 'resize-sw' | 'resize-ne' | 'resize-nw' | 'rotate' | null
@@ -14,11 +15,11 @@ type DragMode = 'move' | 'resize-se' | 'resize-sw' | 'resize-ne' | 'resize-nw' |
 function AdminDashboard(): JSX.Element {
     const navigate = useNavigate()
     const { frames, addFrame, updateFrame, deleteFrame, addSlot, updateSlot, deleteSlot, addQRSlot, updateQRSlot, deleteQRSlot, setActiveFrame, undo, redo } = useFrameStore()
-    const { config, updateConfig } = useAppConfig()
+    const { config, updateConfig, setIsLayoutEditMode } = useAppConfig()
     const { filters, addFilter, removeFilter } = useFilterStore()
     const { endSession } = useSessionStore()
 
-    const [activeTab, setActiveTab] = useState<'frames' | 'timers' | 'filters' | 'payment' | 'history' | 'sharing' | 'printers' | 'queue' | 'webhook'>('frames')
+    const [activeTab, setActiveTab] = useState<'frames' | 'timers' | 'filters' | 'payment' | 'history' | 'sharing' | 'printers' | 'queue' | 'webhook' | 'button-indicator'>('frames')
     const [cloudQueue, setCloudQueue] = useState<any[]>([])
     const [isLoadingQueue, setIsLoadingQueue] = useState(false)
     const [eventsList, setEventsList] = useState<{ id: string; name: string; booth_name: string }[]>([])
@@ -57,6 +58,24 @@ function AdminDashboard(): JSX.Element {
     const liveViewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
     const canvasRef = useRef<HTMLDivElement>(null)
+    const indicatorCanvasRef = useRef<HTMLDivElement>(null)
+
+    // Button Indicator Editor State & Guidelines
+    const [indicatorPreviewPage, setIndicatorPreviewPage] = useState<'landing' | 'frames' | 'payment' | 'capture' | 'review' | 'sharing' | 'printing'>('landing')
+    const [showGridLines, setShowGridLines] = useState(true)
+    const [showCenterLines, setShowCenterLines] = useState(true)
+    const [showMarginGuides, setShowMarginGuides] = useState(true)
+    const [enableMagneticSnap, setEnableMagneticSnap] = useState(true)
+    const [indicatorDragMode, setIndicatorDragMode] = useState<DragMode>(null)
+    const [indicatorDragStart, setIndicatorDragStart] = useState({
+        mouseX: 0,
+        mouseY: 0,
+        posX: 80,
+        posY: 50,
+        width: 260,
+        height: 70,
+        rotation: 0
+    })
 
     // Fetch handlers
     const fetchIp = async () => {
@@ -486,6 +505,111 @@ function AdminDashboard(): JSX.Element {
         setSelectedSlotId(slotId)
     }, [selectedFrame, getQRSlots])
 
+    // Button Indicator Drag/Resize/Rotate Start
+    const handleIndicatorMouseDown = useCallback((mode: DragMode, e: React.MouseEvent) => {
+        e.stopPropagation()
+        e.preventDefault()
+        setIndicatorDragStart({
+            mouseX: e.clientX,
+            mouseY: e.clientY,
+            posX: config.buttonIndicatorX ?? 80,
+            posY: config.buttonIndicatorY ?? 50,
+            width: config.buttonIndicatorWidth ?? 260,
+            height: config.buttonIndicatorHeight ?? 70,
+            rotation: config.buttonIndicatorRotation ?? 0
+        })
+        setIndicatorDragMode(mode)
+    }, [config.buttonIndicatorX, config.buttonIndicatorY, config.buttonIndicatorWidth, config.buttonIndicatorHeight, config.buttonIndicatorRotation])
+
+    // Global mouse move listener for indicator editor
+    useEffect(() => {
+        if (!indicatorDragMode || !indicatorCanvasRef.current) return
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const rect = indicatorCanvasRef.current?.getBoundingClientRect()
+            if (!rect) return
+
+            const deltaMouseX = e.clientX - indicatorDragStart.mouseX
+            const deltaMouseY = e.clientY - indicatorDragStart.mouseY
+
+            if (indicatorDragMode === 'move') {
+                const deltaPercentX = (deltaMouseX / rect.width) * 100
+                const deltaPercentY = (deltaMouseY / rect.height) * 100
+
+                let newX = Math.min(Math.max(indicatorDragStart.posX + deltaPercentX, 5), 95)
+                let newY = Math.min(Math.max(indicatorDragStart.posY + deltaPercentY, 5), 95)
+
+                if (enableMagneticSnap) {
+                    if (Math.abs(newX - 50) < 3) newX = 50
+                    if (Math.abs(newY - 50) < 3) newY = 50
+
+                    const snappedX10 = Math.round(newX / 10) * 10
+                    if (Math.abs(newX - snappedX10) < 1.5) newX = snappedX10
+
+                    const snappedY10 = Math.round(newY / 10) * 10
+                    if (Math.abs(newY - snappedY10) < 1.5) newY = snappedY10
+                }
+
+                updateConfig({
+                    buttonIndicatorX: Math.round(newX * 10) / 10,
+                    buttonIndicatorY: Math.round(newY * 10) / 10
+                })
+            } else if (indicatorDragMode.startsWith('resize')) {
+                const isSE = indicatorDragMode === 'resize-se'
+                const isSW = indicatorDragMode === 'resize-sw'
+                const isNE = indicatorDragMode === 'resize-ne'
+                const isNW = indicatorDragMode === 'resize-nw'
+
+                let newW = indicatorDragStart.width
+                let newH = indicatorDragStart.height
+
+                if (isSE || isNE) newW += deltaMouseX * 1.5
+                if (isSW || isNW) newW -= deltaMouseX * 1.5
+
+                if (isSE || isSW) newH += deltaMouseY * 1.5
+                if (isNE || isNW) newH -= deltaMouseY * 1.5
+
+                newW = Math.max(120, Math.min(500, Math.round(newW)))
+                newH = Math.max(40, Math.min(300, Math.round(newH)))
+
+                updateConfig({
+                    buttonIndicatorWidth: newW,
+                    buttonIndicatorHeight: newH
+                })
+            } else if (indicatorDragMode === 'rotate') {
+                const centerX = rect.left + (rect.width * (indicatorDragStart.posX / 100))
+                const centerY = rect.top + (rect.height * (indicatorDragStart.posY / 100))
+
+                const radians = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+                let degrees = Math.round(radians * (180 / Math.PI))
+                if (degrees < 0) degrees += 360
+
+                if (enableMagneticSnap) {
+                    const snapAngles = [0, 45, 90, 135, 180, 225, 270, 315, 360]
+                    for (const snapAngle of snapAngles) {
+                        if (Math.abs(degrees - snapAngle) < 4) {
+                            degrees = snapAngle % 360
+                            break
+                        }
+                    }
+                }
+
+                updateConfig({ buttonIndicatorRotation: degrees })
+            }
+        }
+
+        const handleMouseUp = () => {
+            setIndicatorDragMode(null)
+        }
+
+        window.addEventListener('mousemove', handleMouseMove)
+        window.addEventListener('mouseup', handleMouseUp)
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove)
+            window.removeEventListener('mouseup', handleMouseUp)
+        }
+    }, [indicatorDragMode, indicatorDragStart, enableMagneticSnap, updateConfig])
+
     // Handle frame upload
     const handleFrameUpload = async (): Promise<void> => {
         const result = await window.api.system.openFileDialog({
@@ -721,6 +845,12 @@ function AdminDashboard(): JSX.Element {
                     onClick={() => setActiveTab('webhook')}
                 >
                     🔗 Queue Integration
+                </button>
+                <button
+                    className={`${styles.tab} ${activeTab === 'button-indicator' ? styles.active : ''}`}
+                    onClick={() => setActiveTab('button-indicator')}
+                >
+                    🔘 Penunjuk Tombol
                 </button>
             </nav>
 
@@ -3075,6 +3205,515 @@ function AdminDashboard(): JSX.Element {
                                 <p>3. Ketika ada tiket yang dipanggil, layar menampilkan nomor antrean</p>
                                 <p>4. Operator menekan "Mulai Sesi" → QR Code ditampilkan → sesi foto dimulai</p>
                                 <p>5. Setelah sesi selesai, webhook otomatis dikirim dan antrean dilanjutkan</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Button Indicator Editor Tab */}
+                {activeTab === 'button-indicator' && (
+                    <div className={styles.timersTab}>
+                        <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <h3>🔘 Kustomisasi Penunjuk Tombol Fisik</h3>
+                                    <p style={{ opacity: 0.7, margin: '4px 0 0 0' }}>
+                                        Sesuaikan posisi, bentuk, warna, dan petunjuk visual ke tombol fisik di samping monitor.
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsLayoutEditMode(true)
+                                            navigate('/')
+                                        }}
+                                        style={{
+                                            padding: '10px 18px',
+                                            borderRadius: '10px',
+                                            border: 'none',
+                                            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                                            color: '#ffffff',
+                                            fontWeight: 'bold',
+                                            fontSize: '13px',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                        }}
+                                    >
+                                        🚀 Buka Live Layout Editor (Halaman Asli)
+                                    </button>
+                                    <span style={{ fontWeight: 'bold', fontSize: '14px' }}>
+                                        {config.buttonIndicatorEnabled ? '🟢 AKTIF' : '🔴 NONAKTIF'}
+                                    </span>
+                                    <label className={styles.toggleSwitch}>
+                                        <input
+                                            type="checkbox"
+                                            checked={config.buttonIndicatorEnabled ?? false}
+                                            onChange={(e) => updateConfig({ buttonIndicatorEnabled: e.target.checked })}
+                                        />
+                                        <span className={styles.toggleSlider}></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Interactive Editor Container */}
+                        <div className={styles.timerCard} style={{ gridColumn: '1 / 3' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <h4 style={{ margin: 0 }}>🎨 Canvas Editor (Drag, Resize & Rotate)</h4>
+                                <span style={{ fontSize: '12px', opacity: 0.6 }}>
+                                    Orientasi Layar: <strong>{config.appOrientation?.toUpperCase() || 'PORTRAIT'}</strong>
+                                </span>
+                            </div>
+
+                            {/* Page Preview Selector Bar */}
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px', padding: '10px 14px', backgroundColor: 'var(--color-bg-secondary, #1f2937)', borderRadius: '12px' }}>
+                                <span style={{ fontSize: '13px', fontWeight: 'bold', alignSelf: 'center', marginRight: '6px' }}>👁️ Pratinjau Halaman:</span>
+                                {[
+                                    { id: 'landing', label: '🏠 Beranda' },
+                                    { id: 'frames', label: '🖼️ Pilih Frame' },
+                                    { id: 'payment', label: '💳 Pembayaran' },
+                                    { id: 'capture', label: '📸 Sesi Foto' },
+                                    { id: 'review', label: '🎨 Review Foto' },
+                                    { id: 'sharing', label: '📲 Sharing QR' },
+                                    { id: 'printing', label: '🖨️ Cetak' }
+                                ].map((page) => (
+                                    <button
+                                        key={page.id}
+                                        type="button"
+                                        onClick={() => setIndicatorPreviewPage(page.id as any)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            border: indicatorPreviewPage === page.id ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.15)',
+                                            backgroundColor: indicatorPreviewPage === page.id ? '#3b82f6' : 'rgba(255,255,255,0.05)',
+                                            color: '#ffffff',
+                                            fontSize: '12px',
+                                            fontWeight: indicatorPreviewPage === page.id ? 'bold' : 'normal',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {page.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Canvas Area */}
+                            <div
+                                ref={indicatorCanvasRef}
+                                style={{
+                                    position: 'relative',
+                                    width: '100%',
+                                    height: config.appOrientation === 'landscape' ? '380px' : '520px',
+                                    maxWidth: '650px',
+                                    margin: '0 auto',
+                                    backgroundColor: '#0f172a',
+                                    borderRadius: '16px',
+                                    border: '3px solid #334155',
+                                    overflow: 'hidden',
+                                    boxShadow: 'inset 0 0 40px rgba(0,0,0,0.8)',
+                                    userSelect: 'none'
+                                }}
+                            >
+                                {/* Background Screen Mockup Graphic based on indicatorPreviewPage */}
+                                <div style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    pointerEvents: 'none',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    padding: '16px',
+                                    boxSizing: 'border-box'
+                                }}>
+                                    {indicatorPreviewPage === 'landing' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', background: 'radial-gradient(circle, rgba(30,58,138,0.4) 0%, rgba(15,23,42,0.9) 100%)', borderRadius: '12px' }}>
+                                            <div style={{ fontSize: '28px', fontWeight: '900', letterSpacing: '2px', color: '#f8fafc', marginBottom: '8px' }}>📸 SEBOOTH</div>
+                                            <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '24px' }}>Capture Extraordinary Moments</div>
+                                            <div style={{ padding: '14px 32px', borderRadius: '999px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white', fontWeight: 'bold', fontSize: '15px', boxShadow: '0 8px 20px rgba(239,68,68,0.4)' }}>
+                                                🚀 MULAI SESI FOTO
+                                            </div>
+                                            <div style={{ fontSize: '11px', opacity: 0.5, marginTop: '16px' }}>Tekan tombol untuk memulai</div>
+                                        </div>
+                                    )}
+
+                                    {indicatorPreviewPage === 'frames' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#1e293b', borderRadius: '12px', padding: '16px' }}>
+                                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#f8fafc', marginBottom: '12px' }}>🖼️ Pilih Desain Frame</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', flex: 1 }}>
+                                                {[1, 2, 3].map(i => (
+                                                    <div key={i} style={{ border: i === 1 ? '2px solid #3b82f6' : '1px solid #475569', borderRadius: '8px', padding: '8px', background: '#0f172a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <div style={{ width: '80%', height: '60px', background: '#334155', borderRadius: '4px', marginBottom: '6px' }} />
+                                                        <div style={{ fontSize: '10px', color: '#cbd5e1' }}>Frame {i}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div style={{ marginTop: '12px', padding: '10px', background: '#3b82f6', color: 'white', textAlign: 'center', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px' }}>
+                                                LANJUTKAN ➔
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {indicatorPreviewPage === 'payment' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#1e293b', borderRadius: '12px', padding: '16px' }}>
+                                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#f8fafc', marginBottom: '4px' }}>💳 Pembayaran QRIS</div>
+                                            <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 'bold', marginBottom: '12px' }}>Rp 25.000 (1 Sesi)</div>
+                                            <div style={{ width: '130px', height: '130px', background: 'white', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 'bold', fontSize: '12px' }}>
+                                                [ QRIS CODE ]
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '12px' }}>Scan dengan GoPay / ShopeePay / BCA</div>
+                                        </div>
+                                    )}
+
+                                    {indicatorPreviewPage === 'capture' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#090d16', borderRadius: '12px', padding: '12px', position: 'relative' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>
+                                                <span>📸 CAMERA LIVE VIEW</span>
+                                                <span style={{ color: '#10b981' }}>🔴 REC 00:03</span>
+                                            </div>
+                                            <div style={{ flex: 1, border: '2px dashed #334155', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                                <div style={{ fontSize: '64px', fontWeight: '900', color: '#ef4444', textShadow: '0 0 20px rgba(239,68,68,0.8)' }}>3</div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px', marginTop: '8px', justifyContent: 'center' }}>
+                                                {[1, 2, 3, 4].map(s => (
+                                                    <div key={s} style={{ width: '20px', height: '20px', borderRadius: '50%', background: s === 1 ? '#ef4444' : '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', color: 'white', fontWeight: 'bold' }}>
+                                                        {s}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {indicatorPreviewPage === 'review' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#1e293b', borderRadius: '12px', padding: '12px' }}>
+                                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f8fafc', marginBottom: '8px' }}>🎨 Review & Pilih Filter</div>
+                                            <div style={{ flex: 1, background: '#0f172a', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#64748b' }}>
+                                                [ FOTO RESULT STRIP ]
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px', marginTop: '8px', overflowX: 'hidden' }}>
+                                                {['Original', 'B&W', 'Warm', 'Cool'].map(f => (
+                                                    <div key={f} style={{ padding: '4px 10px', borderRadius: '6px', background: f === 'Original' ? '#3b82f6' : '#334155', fontSize: '10px', color: 'white' }}>
+                                                        {f}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {indicatorPreviewPage === 'sharing' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#1e293b', borderRadius: '12px', padding: '16px' }}>
+                                            <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#f8fafc', marginBottom: '4px' }}>📲 Download Foto Digital</div>
+                                            <div style={{ width: '110px', height: '110px', background: 'white', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 'bold', fontSize: '11px', margin: '8px 0' }}>
+                                                [ SCAN QR CODE ]
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '8px' }}>
+                                                <div style={{ padding: '6px 14px', background: '#334155', borderRadius: '6px', fontSize: '12px', color: 'white' }}>- 2 Lembar +</div>
+                                                <div style={{ padding: '6px 16px', background: '#10b981', borderRadius: '6px', fontSize: '12px', color: 'white', fontWeight: 'bold' }}>🖨️ CETAK</div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {indicatorPreviewPage === 'printing' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0f172a', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+                                            <div style={{ fontSize: '36px', marginBottom: '8px' }}>🖨️</div>
+                                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#f8fafc', marginBottom: '6px' }}>Foto Sedang Dicetak...</div>
+                                            <div style={{ width: '70%', height: '8px', background: '#334155', borderRadius: '999px', overflow: 'hidden', margin: '8px 0' }}>
+                                                <div style={{ width: '65%', height: '100%', background: '#10b981' }} />
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Silakan ambil foto di bagian bawah printer</div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Layout Guidelines: 3x3 Grid Lines */}
+                                {showGridLines && (
+                                    <>
+                                        <div style={{ position: 'absolute', top: '33.33%', left: 0, right: 0, borderTop: '1px dashed rgba(255,255,255,0.15)', pointerEvents: 'none' }} />
+                                        <div style={{ position: 'absolute', top: '66.66%', left: 0, right: 0, borderTop: '1px dashed rgba(255,255,255,0.15)', pointerEvents: 'none' }} />
+                                        <div style={{ position: 'absolute', left: '33.33%', top: 0, bottom: 0, borderLeft: '1px dashed rgba(255,255,255,0.15)', pointerEvents: 'none' }} />
+                                        <div style={{ position: 'absolute', left: '66.66%', top: 0, bottom: 0, borderLeft: '1px dashed rgba(255,255,255,0.15)', pointerEvents: 'none' }} />
+                                    </>
+                                )}
+
+                                {/* Layout Guidelines: Center Lines (50%) */}
+                                {showCenterLines && (
+                                    <>
+                                        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1.5px dashed #ef4444', opacity: 0.6, pointerEvents: 'none' }} />
+                                        <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1.5px dashed #ef4444', opacity: 0.6, pointerEvents: 'none' }} />
+                                    </>
+                                )}
+
+                                {/* Layout Guidelines: Safety Margin Border Guides (5% & 10%) */}
+                                {showMarginGuides && (
+                                    <>
+                                        <div style={{ position: 'absolute', inset: '5%', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', pointerEvents: 'none' }} />
+                                        <div style={{ position: 'absolute', inset: '10%', border: '1px dashed rgba(16, 185, 129, 0.3)', borderRadius: '8px', pointerEvents: 'none' }} />
+                                    </>
+                                )}
+
+                                {/* Draggable & Resizable Indicator Wrapper */}
+                                <div
+                                    onMouseDown={(e) => handleIndicatorMouseDown('move', e)}
+                                    style={{
+                                        position: 'absolute',
+                                        left: `${config.buttonIndicatorX ?? 80}%`,
+                                        top: `${config.buttonIndicatorY ?? 50}%`,
+                                        width: `${config.buttonIndicatorWidth ?? 260}px`,
+                                        height: `${config.buttonIndicatorHeight ?? 70}px`,
+                                        transform: `translate(-50%, -50%) rotate(${config.buttonIndicatorRotation ?? 0}deg)`,
+                                        transformOrigin: 'center center',
+                                        cursor: indicatorDragMode === 'move' ? 'grabbing' : 'grab',
+                                        zIndex: 10
+                                    }}
+                                >
+                                    {/* Selection Bounding Border & Rotate Handle */}
+                                    <div style={{
+                                        position: 'absolute',
+                                        inset: '-6px',
+                                        border: '2px dashed #3b82f6',
+                                        borderRadius: '12px',
+                                        pointerEvents: 'none'
+                                    }}>
+                                        {/* Rotate Knob Handle */}
+                                        <div
+                                            onMouseDown={(e) => handleIndicatorMouseDown('rotate', e)}
+                                            style={{
+                                                position: 'absolute',
+                                                top: '-28px',
+                                                left: '50%',
+                                                transform: 'translateX(-50%)',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '50%',
+                                                backgroundColor: '#3b82f6',
+                                                color: '#ffffff',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '14px',
+                                                cursor: 'grab',
+                                                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                                                pointerEvents: 'auto'
+                                            }}
+                                            title="Tarik untuk memutar indikator (Rotate)"
+                                        >
+                                            ↻
+                                        </div>
+
+                                        {/* Resize Handles (SE, SW, NE, NW) */}
+                                        <div
+                                            onMouseDown={(e) => handleIndicatorMouseDown('resize-nw', e)}
+                                            style={{ position: 'absolute', top: '-6px', left: '-6px', width: '12px', height: '12px', background: '#3b82f6', border: '2px solid white', borderRadius: '50%', cursor: 'nwse-resize', pointerEvents: 'auto' }}
+                                        />
+                                        <div
+                                            onMouseDown={(e) => handleIndicatorMouseDown('resize-ne', e)}
+                                            style={{ position: 'absolute', top: '-6px', right: '-6px', width: '12px', height: '12px', background: '#3b82f6', border: '2px solid white', borderRadius: '50%', cursor: 'nesw-resize', pointerEvents: 'auto' }}
+                                        />
+                                        <div
+                                            onMouseDown={(e) => handleIndicatorMouseDown('resize-sw', e)}
+                                            style={{ position: 'absolute', bottom: '-6px', left: '-6px', width: '12px', height: '12px', background: '#3b82f6', border: '2px solid white', borderRadius: '50%', cursor: 'nesw-resize', pointerEvents: 'auto' }}
+                                        />
+                                        <div
+                                            onMouseDown={(e) => handleIndicatorMouseDown('resize-se', e)}
+                                            style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '12px', height: '12px', background: '#3b82f6', border: '2px solid white', borderRadius: '50%', cursor: 'nwse-resize', pointerEvents: 'auto' }}
+                                        />
+                                    </div>
+
+                                    {/* Actual Indicator Render Component */}
+                                    <PhysicalButtonIndicator isEditing={true} overrideConfig={config} />
+                                </div>
+                            </div>
+
+                            {/* Guideline Controls Toolbar */}
+                            <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '16px',
+                                marginTop: '16px',
+                                padding: '12px 16px',
+                                backgroundColor: 'var(--color-bg-secondary, #1f2937)',
+                                borderRadius: '12px',
+                                fontSize: '13px'
+                            }}>
+                                <span style={{ fontWeight: 'bold', alignSelf: 'center' }}>📐 Layout Guidelines:</span>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} />
+                                    Grid 3x3
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={showCenterLines} onChange={(e) => setShowCenterLines(e.target.checked)} />
+                                    <span style={{ color: '#ef4444' }}>Sumbu Tengah (Center)</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={showMarginGuides} onChange={(e) => setShowMarginGuides(e.target.checked)} />
+                                    <span style={{ color: '#3b82f6' }}>Margin Tepi (Safety)</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={enableMagneticSnap} onChange={(e) => setEnableMagneticSnap(e.target.checked)} />
+                                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>🧲 Magnetic Snap</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Settings Toolbar Sidebar */}
+                        <div className={styles.timerCard} style={{ gridColumn: '3 / -1' }}>
+                            <h4>⚙️ Pengaturan Teks & Gaya</h4>
+
+                            {/* Text Input */}
+                            <div className={styles.formGroup} style={{ marginBottom: '16px' }}>
+                                <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Teks Penunjuk:</label>
+                                <input
+                                    type="text"
+                                    value={config.buttonIndicatorText || ''}
+                                    onChange={(e) => updateConfig({ buttonIndicatorText: e.target.value })}
+                                    placeholder="TEKAN TOMBOL DI SINI ➔"
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 14px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--color-border, #374151)',
+                                        background: 'var(--color-bg-secondary, #1f2937)',
+                                        color: '#ffffff',
+                                        marginTop: '6px'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Shape Selector */}
+                            <div className={styles.formGroup} style={{ marginBottom: '16px' }}>
+                                <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Bentuk / Model:</label>
+                                <select
+                                    value={config.buttonIndicatorShape || 'pill'}
+                                    onChange={(e) => updateConfig({ buttonIndicatorShape: e.target.value as any })}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 14px',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--color-border, #374151)',
+                                        background: 'var(--color-bg-secondary, #1f2937)',
+                                        color: '#ffffff',
+                                        marginTop: '6px'
+                                    }}
+                                >
+                                    <option value="pill">💊 Pill / Capsule (Kapsul Bulat)</option>
+                                    <option value="rectangle">⬛ Sleek Rectangle (Kotak Modern)</option>
+                                    <option value="badge">🏷️ Callout Badge (Tag Melayang)</option>
+                                    <option value="arrow-right">➔ Panah Kanan</option>
+                                    <option value="arrow-left">⬅ Panah Kiri</option>
+                                    <option value="arrow-down">⬇ Panah Bawah</option>
+                                    <option value="arrow-up">⬆ Panah Atas</option>
+                                </select>
+                            </div>
+
+                            {/* Color Quick Presets */}
+                            <div className={styles.formGroup} style={{ marginBottom: '16px' }}>
+                                <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Preset Warna Cepat:</label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                                    {[
+                                        { name: 'Merah', bg: '#ef4444', text: '#ffffff', border: '#ffffff' },
+                                        { name: 'Hijau', bg: '#10b981', text: '#ffffff', border: '#ffffff' },
+                                        { name: 'Biru', bg: '#3b82f6', text: '#ffffff', border: '#ffffff' },
+                                        { name: 'Kuning', bg: '#eab308', text: '#000000', border: '#000000' },
+                                        { name: 'Oranye', bg: '#f97316', text: '#ffffff', border: '#ffffff' },
+                                        { name: 'Ungu', bg: '#8b5cf6', text: '#ffffff', border: '#ffffff' },
+                                        { name: 'Gelap', bg: '#1e293b', text: '#ffffff', border: '#3b82f6' }
+                                    ].map((preset) => (
+                                        <button
+                                            key={preset.name}
+                                            type="button"
+                                            onClick={() => updateConfig({
+                                                buttonIndicatorBgColor: preset.bg,
+                                                buttonIndicatorTextColor: preset.text,
+                                                buttonIndicatorBorderColor: preset.border
+                                            })}
+                                            style={{
+                                                padding: '6px 12px',
+                                                borderRadius: '6px',
+                                                backgroundColor: preset.bg,
+                                                color: preset.text,
+                                                border: `2px solid ${preset.border}`,
+                                                fontSize: '12px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {preset.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Custom Color Pickers */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                <div>
+                                    <label style={{ fontSize: '12px' }}>Warna Background:</label>
+                                    <input
+                                        type="color"
+                                        value={config.buttonIndicatorBgColor || '#ef4444'}
+                                        onChange={(e) => updateConfig({ buttonIndicatorBgColor: e.target.value })}
+                                        style={{ width: '100%', height: '36px', borderRadius: '6px', cursor: 'pointer', border: 'none', marginTop: '4px' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '12px' }}>Warna Teks:</label>
+                                    <input
+                                        type="color"
+                                        value={config.buttonIndicatorTextColor || '#ffffff'}
+                                        onChange={(e) => updateConfig({ buttonIndicatorTextColor: e.target.value })}
+                                        style={{ width: '100%', height: '36px', borderRadius: '6px', cursor: 'pointer', border: 'none', marginTop: '4px' }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Rotation & Size Sliders */}
+                            <div className={styles.formGroup} style={{ marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                    <label style={{ fontWeight: 'bold' }}>Rotasi Sudut (Rotate):</label>
+                                    <span>{config.buttonIndicatorRotation ?? 0}°</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="360"
+                                    value={config.buttonIndicatorRotation ?? 0}
+                                    onChange={(e) => updateConfig({ buttonIndicatorRotation: Number(e.target.value) })}
+                                    style={{ width: '100%', marginTop: '6px' }}
+                                />
+                            </div>
+
+                            {/* Font Size Slider */}
+                            <div className={styles.formGroup} style={{ marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                    <label style={{ fontWeight: 'bold' }}>Ukuran Font:</label>
+                                    <span>{config.buttonIndicatorFontSize ?? 16}px</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="12"
+                                    max="32"
+                                    value={config.buttonIndicatorFontSize ?? 16}
+                                    onChange={(e) => updateConfig({ buttonIndicatorFontSize: Number(e.target.value) })}
+                                    style={{ width: '100%', marginTop: '6px' }}
+                                />
+                            </div>
+
+                            {/* Pulse Animation Toggle */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                                <div>
+                                    <span style={{ fontWeight: 'bold', fontSize: '14px' }}>✨ Animasi Denyut (Pulse Glow)</span>
+                                    <p style={{ fontSize: '12px', opacity: 0.6, margin: '2px 0 0 0' }}>Bikin penunjuk terus berdenyut untuk menarik perhatian</p>
+                                </div>
+                                <label className={styles.toggleSwitch}>
+                                    <input
+                                        type="checkbox"
+                                        checked={config.buttonIndicatorPulse ?? true}
+                                        onChange={(e) => updateConfig({ buttonIndicatorPulse: e.target.checked })}
+                                    />
+                                    <span className={styles.toggleSlider}></span>
+                                </label>
                             </div>
                         </div>
                     </div>
