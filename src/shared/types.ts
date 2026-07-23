@@ -110,8 +110,9 @@ export interface SetupConfig {
     emailService?: string
 }
 
-// Page Button Indicator Configuration
-export interface PageButtonIndicatorConfig {
+// Single Button Indicator Item Configuration
+export interface ButtonIndicatorItem {
+    id: string
     enabled?: boolean
     text?: string
     x?: number // position X in % (0 - 100)
@@ -119,6 +120,25 @@ export interface PageButtonIndicatorConfig {
     width?: number // width in px
     height?: number // height in px
     rotation?: number // angle in degrees (0 - 360)
+    bgColor?: string
+    textColor?: string
+    borderColor?: string
+    shape?: 'pill' | 'rectangle' | 'badge' | 'arrow-right' | 'arrow-left' | 'arrow-down' | 'arrow-up'
+    pulse?: boolean
+    fontSize?: number
+}
+
+// Page Button Indicator Configuration (Supports Multiple Indicators per Page)
+export interface PageButtonIndicatorConfig {
+    enabled?: boolean
+    indicators?: ButtonIndicatorItem[] // Array of multiple indicators per page
+    // Legacy single-indicator fallbacks
+    text?: string
+    x?: number
+    y?: number
+    width?: number
+    height?: number
+    rotation?: number
     bgColor?: string
     textColor?: string
     borderColor?: string

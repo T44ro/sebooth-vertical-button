@@ -31,6 +31,8 @@ interface AppConfigState {
     setShowMarginGuides: (show: boolean) => void
     enableMagneticSnap: boolean
     setEnableMagneticSnap: (snap: boolean) => void
+    selectedIndicatorId: string | null
+    setSelectedIndicatorId: (id: string | null) => void
 }
 
 const defaultConfig: AppConfig = {
@@ -181,6 +183,8 @@ export const useAppConfig = create<AppConfigState>((set) => {
         setShowMarginGuides: (show) => set({ showMarginGuides: show }),
         enableMagneticSnap: true,
         setEnableMagneticSnap: (snap) => set({ enableMagneticSnap: snap }),
+        selectedIndicatorId: null,
+        setSelectedIndicatorId: (id) => set({ selectedIndicatorId: id }),
         updateConfig: async (updates) => {
             // Optimistic update
             set((state) => ({ config: { ...state.config, ...updates } }))
