@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useFrameStore, useAppConfig, useSessionStore } from '../stores'
 import { SessionTimer } from '../components/SessionTimer'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
@@ -15,24 +15,39 @@ function FrameSelection(): JSX.Element {
     const [focusedIndex, setFocusedIndex] = useState(0)
 
     // Clear any existing session when entering frame selection
-    // This prevents old photos from persisting after timer timeout
     useEffect(() => {
         endSession()
     }, [endSession])
 
-    // Show only active frames if any are active, otherwise show all
+    // Filter active frames if configured, otherwise show all
     const displayFrames = config.activeFrameIds.length > 0
         ? frames.filter(f => config.activeFrameIds.includes(f.id))
         : frames
 
+    // Keep focusedIndex in bounds when frames list changes
+    useEffect(() => {
+        if (displayFrames.length > 0 && focusedIndex >= displayFrames.length) {
+            setFocusedIndex(0)
+        }
+    }, [displayFrames.length, focusedIndex])
+
     const handleSelectFrame = (frameId: string): void => {
         setActiveFrame(frameId)
-        // Navigate to payment if enabled, otherwise go directly to capture
         if (config.paymentEnabled) {
             navigate('/payment')
         } else {
             navigate('/capture')
         }
+    }
+
+    const handleNext = () => {
+        if (displayFrames.length === 0) return
+        setFocusedIndex(prev => (prev + 1) % displayFrames.length)
+    }
+
+    const handlePrev = () => {
+        if (displayFrames.length === 0) return
+        setFocusedIndex(prev => (prev - 1 + displayFrames.length) % displayFrames.length)
     }
 
     const handleBack = (): void => {
@@ -44,24 +59,23 @@ function FrameSelection(): JSX.Element {
         navigate('/')
     }
 
-    // Session timer timeout handler
     const handleTimeout = (): void => {
         navigate('/')
     }
 
-    // Keyboard navigation
+    // Keyboard & Physical Arcade Button Navigation (1: Prev, 3: Next, 2: Select)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
             if (displayFrames.length === 0) return
 
-            if (e.key === '1') {
+            if (e.key === '1' || e.key === 'ArrowLeft') {
                 e.preventDefault()
-                setFocusedIndex(prev => (prev > 0 ? prev - 1 : displayFrames.length - 1))
-            } else if (e.key === '3') {
+                handlePrev()
+            } else if (e.key === '3' || e.key === 'ArrowRight') {
                 e.preventDefault()
-                setFocusedIndex(prev => (prev < displayFrames.length - 1 ? prev + 1 : 0))
-            } else if (e.key === '2') {
+                handleNext()
+            } else if (e.key === '2' || e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
                 const selected = displayFrames[focusedIndex]
                 if (selected) {
@@ -73,6 +87,8 @@ function FrameSelection(): JSX.Element {
         return () => window.removeEventListener('keydown', handleKeyDown)
     }, [displayFrames, focusedIndex])
 
+    const isPortrait = config.appOrientation === 'portrait'
+    const cardSpacing = isPortrait ? 270 : 340
 
     return (
         <motion.div
@@ -88,102 +104,149 @@ function FrameSelection(): JSX.Element {
                 enabled={config.sessionTimerEnabled}
                 label="Frame Selection"
             />
+
             <header className={styles.header}>
                 <button onClick={handleBack} className={styles.backButton}>
                     ← Back
                 </button>
-                <h1>Select a Frame</h1>
+                <h1>PILIH FRAME FOTO</h1>
+                <div style={{ width: '80px' }} />
             </header>
 
             <main className={styles.content}>
-                {frames.length === 0 ? (
+                {displayFrames.length === 0 ? (
                     <div className={styles.emptyState}>
                         <span className={styles.emptyIcon}>🖼️</span>
-                        <h2>No Frames Available</h2>
-                        <p>Please add frames in the Admin Dashboard first.</p>
+                        <h2>Belum Ada Frame</h2>
+                        <p>Silakan tambahkan frame di Admin Dashboard terlebih dahulu.</p>
                         <button onClick={() => navigate('/admin')} className={styles.adminButton}>
-                            Go to Admin
+                            Ke Dashboard Admin
                         </button>
                     </div>
                 ) : (
-                    <div className={styles.frameGrid}>
-                        {displayFrames.map((frame, index) => (
-                            <motion.div
-                                key={frame.id}
-                                className={styles.frameCard}
-                                onClick={() => handleSelectFrame(frame.id)}
-                                style={{
-                                    outline: index === focusedIndex ? '4px solid var(--clay-yellow)' : 'none',
-                                    outlineOffset: '-4px'
-                                }}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: index * 0.1 }}
-                                whileHover={{ scale: 1.03, y: -5 }}
-                                whileTap={{ scale: 0.98 }}
-                            >
-                                <div
-                                    className={styles.framePreview}
-                                    style={{ aspectRatio: `${frame.canvasWidth} / ${frame.canvasHeight}` }}
-                                >
-                                    {/* Colored slot indicators behind overlay */}
-                                    {frame.slots.map((slot) => {
-                                        const slotColors = ['#ef4444', '#3b82f6', '#22c55e', '#f97316', '#eab308', '#a855f7', '#ec4899', '#14b8a6']
+                    <div className={styles.carouselWrapper}>
+                        {/* Side Arrow Navigation Buttons */}
+                        {displayFrames.length > 1 && (
+                            <>
+                                <button className={styles.navArrowLeft} onClick={handlePrev} title="Frame Sebelumnya (Tombol 1)">
+                                    ◀
+                                </button>
+                                <button className={styles.navArrowRight} onClick={handleNext} title="Frame Selanjutnya (Tombol 3)">
+                                    ▶
+                                </button>
+                            </>
+                        )}
 
-                                        // Calculate sequential number (only count non-duplicates)
-                                        const nonDuplicateSlots = frame.slots.filter(s => !s.duplicateOfSlotId)
-                                        let displayNumber: number
-                                        let colorIndex: number
+                        {/* Horizontal Carousel Track */}
+                        <div className={styles.carouselTrack}>
+                            {displayFrames.map((frame, index) => {
+                                const offset = index - focusedIndex
+                                const isFocused = index === focusedIndex
 
-                                        if (slot.duplicateOfSlotId) {
-                                            // Duplicate: use source slot's sequential number
-                                            const sourceSlot = frame.slots.find(s => s.id === slot.duplicateOfSlotId)
-                                            if (sourceSlot) {
-                                                displayNumber = nonDuplicateSlots.findIndex(s => s.id === sourceSlot.id) + 1
+                                // Calculate scale, opacity, x position based on distance from center
+                                const scale = isFocused ? 1.22 : Math.max(0.7, 0.9 - Math.abs(offset) * 0.15)
+                                const opacity = isFocused ? 1 : Math.max(0, 0.65 - (Math.abs(offset) - 1) * 0.3)
+                                const zIndex = isFocused ? 20 : 10 - Math.abs(offset)
+                                const translateX = offset * cardSpacing
+
+                                // Don't render items that are too far away offscreen
+                                if (Math.abs(offset) > 3) return null
+
+                                return (
+                                    <motion.div
+                                        key={frame.id}
+                                        className={`${styles.carouselCard} ${isFocused ? styles.focusedCard : ''}`}
+                                        onClick={() => {
+                                            if (isFocused) {
+                                                handleSelectFrame(frame.id)
                                             } else {
-                                                displayNumber = 0
+                                                setFocusedIndex(index)
                                             }
-                                        } else {
-                                            // Non-duplicate: sequential position
-                                            displayNumber = nonDuplicateSlots.findIndex(s => s.id === slot.id) + 1
-                                        }
-                                        colorIndex = Math.max(0, displayNumber - 1)
-                                        const color = slotColors[colorIndex % slotColors.length]
+                                        }}
+                                        animate={{
+                                            x: translateX,
+                                            scale,
+                                            opacity,
+                                            zIndex
+                                        }}
+                                        transition={{
+                                            type: 'spring',
+                                            stiffness: 300,
+                                            damping: 26
+                                        }}
+                                    >
+                                        <div
+                                            className={styles.framePreview}
+                                            style={{ aspectRatio: `${frame.canvasWidth} / ${frame.canvasHeight}` }}
+                                        >
+                                            {/* Colored slot indicators */}
+                                            {frame.slots.map((slot) => {
+                                                const slotColors = ['#ef4444', '#3b82f6', '#22c55e', '#f97316', '#eab308', '#a855f7', '#ec4899', '#14b8a6']
+                                                const nonDuplicateSlots = frame.slots.filter(s => !s.duplicateOfSlotId)
+                                                let displayNumber: number
+                                                let colorIndex: number
 
-                                        return (
-                                            <div
-                                                key={slot.id}
-                                                className={styles.slotIndicator}
-                                                style={{
-                                                    left: `${(slot.x / frame.canvasWidth) * 100}%`,
-                                                    top: `${(slot.y / frame.canvasHeight) * 100}%`,
-                                                    width: `${(slot.width / frame.canvasWidth) * 100}%`,
-                                                    height: `${(slot.height / frame.canvasHeight) * 100}%`,
-                                                    transform: `rotate(${slot.rotation}deg)`,
-                                                    backgroundColor: color,
-                                                    opacity: 0.7
-                                                }}
-                                            >
-                                                <span className={styles.slotNumber}>{displayNumber}</span>
-                                            </div>
-                                        )
-                                    })}
-                                    {/* Frame overlay on top */}
-                                    <img
-                                        src={`file://${frame.overlayPath}`}
-                                        alt={frame.name}
-                                        className={styles.frameOverlayImage}
-                                    />
-                                </div>
-                                <div className={styles.frameInfo}>
-                                    <h3>{frame.name}</h3>
-                                    <span>{frame.slots.filter(s => !s.duplicateOfSlotId).length} photo{frame.slots.filter(s => !s.duplicateOfSlotId).length !== 1 ? 's' : ''}</span>
-                                </div>
-                            </motion.div>
-                        ))}
+                                                if (slot.duplicateOfSlotId) {
+                                                    const sourceSlot = frame.slots.find(s => s.id === slot.duplicateOfSlotId)
+                                                    displayNumber = sourceSlot ? nonDuplicateSlots.findIndex(s => s.id === sourceSlot.id) + 1 : 0
+                                                } else {
+                                                    displayNumber = nonDuplicateSlots.findIndex(s => s.id === slot.id) + 1
+                                                }
+                                                colorIndex = Math.max(0, displayNumber - 1)
+                                                const color = slotColors[colorIndex % slotColors.length]
+
+                                                return (
+                                                    <div
+                                                        key={slot.id}
+                                                        className={styles.slotIndicator}
+                                                        style={{
+                                                            left: `${(slot.x / frame.canvasWidth) * 100}%`,
+                                                            top: `${(slot.y / frame.canvasHeight) * 100}%`,
+                                                            width: `${(slot.width / frame.canvasWidth) * 100}%`,
+                                                            height: `${(slot.height / frame.canvasHeight) * 100}%`,
+                                                            transform: `rotate(${slot.rotation}deg)`,
+                                                            backgroundColor: color,
+                                                            opacity: 0.7
+                                                        }}
+                                                    >
+                                                        <span className={styles.slotNumber}>{displayNumber}</span>
+                                                    </div>
+                                                )
+                                            })}
+                                            {/* Frame overlay on top */}
+                                            <img
+                                                src={`file://${frame.overlayPath}`}
+                                                alt={frame.name}
+                                                className={styles.frameOverlayImage}
+                                            />
+                                        </div>
+                                        <div className={styles.frameInfo}>
+                                            <h3>{frame.name}</h3>
+                                            <span>{frame.slots.filter(s => !s.duplicateOfSlotId).length} photo{frame.slots.filter(s => !s.duplicateOfSlotId).length !== 1 ? 's' : ''}</span>
+                                        </div>
+                                    </motion.div>
+                                )
+                            })}
+                        </div>
                     </div>
                 )}
             </main>
+
+            {/* Bottom Action Bar */}
+            {displayFrames.length > 0 && (
+                <div className={styles.bottomActionBar}>
+                    <button
+                        className={styles.selectButton}
+                        onClick={() => handleSelectFrame(displayFrames[focusedIndex]?.id)}
+                    >
+                        <span>PILIH FRAME INI</span>
+                        <span>➔</span>
+                    </button>
+                    <span className={styles.instructionsHint}>
+                        💡 Tekan tombol panah ◀ / ▶ atau angka 1/3 untuk geser frame, tombol 2 untuk pilih.
+                    </span>
+                </div>
+            )}
 
             <ConfirmBackHomeModal
                 isOpen={isConfirmModalOpen}

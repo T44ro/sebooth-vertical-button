@@ -4,24 +4,27 @@
     display: flex;
     flex-direction: column;
     background: var(--clay-cream);
+    overflow: hidden;
+    position: relative;
+    user-select: none;
 }
 
 .header {
     display: flex;
     align-items: center;
-    gap: var(--spacing-lg);
+    justify-content: space-between;
     padding: var(--spacing-lg) var(--spacing-xl);
     background: transparent;
-    z-index: 10;
+    z-index: 20;
 }
 
 .header h1 {
     font-size: var(--font-size-2xl);
     font-weight: 900;
     color: var(--color-text-main);
+    margin: 0;
 }
 
-/* Red coral pill back button */
 .backButton {
     padding: var(--spacing-xs) var(--spacing-md);
     font-size: var(--font-size-sm);
@@ -40,77 +43,55 @@
 
 .content {
     flex: 1;
-    padding: var(--spacing-lg) var(--spacing-xl);
-    overflow-y: auto;
-}
-
-/* Empty State */
-.emptyState {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    position: relative;
+    width: 100%;
     height: 100%;
-    text-align: center;
-    gap: var(--spacing-md);
-}
-
-.emptyIcon { font-size: 80px; margin-bottom: var(--spacing-md); }
-
-.emptyState h2 {
-    font-size: var(--font-size-2xl);
-    color: var(--color-text-main);
-    font-weight: 900;
-}
-
-.emptyState p { color: var(--color-text-secondary); }
-
-.adminButton {
-    margin-top: var(--spacing-lg);
-    padding: var(--spacing-md) var(--spacing-xl);
-    font-weight: 900;
-    color: #1A1A2E;
-    background: var(--clay-yellow);
-    border: none;
-    border-radius: var(--radius-full);
-    box-shadow: var(--clay-shadow-yellow);
-    cursor: pointer;
-    transition: all var(--transition-bouncy);
-}
-
-.adminButton:hover { transform: translateY(-4px) scale(1.03); }
-.adminButton:active { transform: scale(0.92); box-shadow: var(--clay-shadow-sm); }
-
-/* Frame Grid */
-.frameGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: var(--spacing-xl);
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: var(--spacing-md);
-}
-
-/* Vibrant color palette cycling for cards */
-.frameCard {
-    background: #FFFFFF;
-    border: none;
-    border-radius: var(--radius-2xl);
     overflow: hidden;
-    cursor: pointer;
-    box-shadow: var(--clay-shadow);
-    transition: all var(--transition-bouncy);
-    padding: var(--spacing-md);
 }
 
-.frameCard:hover {
-    transform: translateY(-10px) scale(1.02);
+/* Horizontal Carousel Track Area */
+.carouselWrapper {
+    width: 100%;
+    height: 70vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    perspective: 1000px;
+}
+
+.carouselTrack {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+/* Individual Frame Card in Slider */
+.carouselCard {
+    position: absolute;
+    width: 280px;
+    background: #FFFFFF;
+    border-radius: var(--radius-2xl);
     box-shadow: var(--clay-shadow-lg);
+    padding: var(--spacing-md);
+    cursor: pointer;
+    transform-origin: center center;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
-.frameCard:active {
-    transform: scale(0.93) translateY(3px);
-    box-shadow: var(--clay-shadow-sm);
+.focusedCard {
+    box-shadow: 0 20px 40px rgba(59, 130, 246, 0.4), 0 0 0 4px #3b82f6;
+    z-index: 10 !important;
 }
 
 .framePreview {
@@ -149,7 +130,7 @@
 }
 
 .frameInfo {
-    padding: var(--spacing-md) var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-sm) 0 var(--spacing-sm);
     text-align: center;
 }
 
@@ -157,7 +138,7 @@
     font-size: var(--font-size-lg);
     font-weight: 900;
     color: var(--color-text-main);
-    margin-bottom: var(--spacing-xs);
+    margin: 0 0 4px 0;
 }
 
 .frameInfo span {
@@ -166,29 +147,124 @@
     font-weight: 700;
 }
 
-/* ── PORTRAIT MODE OVERRIDES ── */
-:global(body.app-portrait) .container {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100vh !important;
+/* Nav Control Side Buttons */
+.navArrowLeft, .navArrowRight {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    border: 3px solid #3b82f6;
+    color: #1e293b;
+    font-size: 24px;
+    font-weight: 900;
+    cursor: pointer;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    transition: all 0.2s ease;
 }
 
-:global(body.app-portrait) .frameGrid {
-    grid-template-columns: 1fr 1fr !important;
-    gap: 20px !important;
-    padding: 20px !important;
-    max-width: 100% !important;
+.navArrowLeft { left: 40px; }
+.navArrowRight { right: 40px; }
+
+.navArrowLeft:hover, .navArrowRight:hover {
+    background: #3b82f6;
+    color: #ffffff;
+    transform: translateY(-50%) scale(1.1);
 }
 
-:global(body.app-portrait) .header {
-    padding: var(--spacing-md) var(--spacing-lg) !important;
+.navArrowLeft:active, .navArrowRight:active {
+    transform: translateY(-50%) scale(0.95);
 }
 
-:global(body.app-portrait) .header h1 {
-    font-size: 22px !important;
+/* Bottom Action Bar */
+.bottomActionBar {
+    margin-bottom: var(--spacing-xl);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
 }
 
-:global(body.app-portrait) .content {
-    padding: var(--spacing-md) var(--spacing-lg) !important;
+.selectButton {
+    padding: 16px 48px;
+    font-size: 20px;
+    font-weight: 900;
+    color: #ffffff;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    border: none;
+    border-radius: var(--radius-full);
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.5);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
-
+
+.selectButton:hover {
+    transform: translateY(-4px) scale(1.05);
+    box-shadow: 0 15px 35px rgba(59, 130, 246, 0.6);
+}
+
+.selectButton:active {
+    transform: scale(0.95);
+}
+
+.instructionsHint {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    background: rgba(255, 255, 255, 0.8);
+    padding: 6px 16px;
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* Empty State */
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    gap: var(--spacing-md);
+}
+
+.emptyIcon { font-size: 80px; margin-bottom: var(--spacing-md); }
+
+.emptyState h2 {
+    font-size: var(--font-size-2xl);
+    color: var(--color-text-main);
+    font-weight: 900;
+}
+
+.emptyState p { color: var(--color-text-secondary); }
+
+.adminButton {
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-xl);
+    font-weight: 900;
+    color: #1A1A2E;
+    background: var(--clay-yellow);
+    border: none;
+    border-radius: var(--radius-full);
+    box-shadow: var(--clay-shadow-yellow);
+    cursor: pointer;
+    transition: all var(--transition-bouncy);
+}
+
+/* PORTRAIT MODE SPECIFICS */
+:global(body.app-portrait) .carouselCard {
+    width: 250px;
+}
+
+:global(body.app-portrait) .navArrowLeft { left: 16px; }
+:global(body.app-portrait) .navArrowRight { right: 16px; }
