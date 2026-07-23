@@ -101,7 +101,59 @@ const defaultConfig: AppConfig = {
     buttonIndicatorBorderColor: '#ffffff',
     buttonIndicatorShape: 'pill',
     buttonIndicatorPulse: true,
-    buttonIndicatorFontSize: 16
+    buttonIndicatorFontSize: 16,
+    // Per-Page Button Indicators (independent configuration per page route)
+    pageButtonIndicators: {
+        landing: {
+            enabled: true,
+            text: 'TEKAN TOMBOL UNTUK MULAI ➔',
+            x: 80, y: 50, width: 280, height: 70, rotation: 0,
+            bgColor: '#ef4444', textColor: '#ffffff', borderColor: '#ffffff',
+            shape: 'pill', pulse: true, fontSize: 16
+        },
+        frames: {
+            enabled: true,
+            text: 'TEKAN TOMBOL PILIH FRAME ➔',
+            x: 80, y: 50, width: 280, height: 70, rotation: 0,
+            bgColor: '#3b82f6', textColor: '#ffffff', borderColor: '#ffffff',
+            shape: 'pill', pulse: true, fontSize: 16
+        },
+        payment: {
+            enabled: true,
+            text: 'TEKAN SETELAH BAYAR ➔',
+            x: 80, y: 50, width: 260, height: 70, rotation: 0,
+            bgColor: '#10b981', textColor: '#ffffff', borderColor: '#ffffff',
+            shape: 'pill', pulse: true, fontSize: 16
+        },
+        capture: {
+            enabled: true,
+            text: 'SIAP-SIAP GAYA! 📸',
+            x: 80, y: 20, width: 240, height: 60, rotation: 0,
+            bgColor: '#f97316', textColor: '#ffffff', borderColor: '#ffffff',
+            shape: 'badge', pulse: true, fontSize: 16
+        },
+        review: {
+            enabled: true,
+            text: 'TEKAN UNTUK CETAK FOTO ➔',
+            x: 80, y: 50, width: 280, height: 70, rotation: 0,
+            bgColor: '#8b5cf6', textColor: '#ffffff', borderColor: '#ffffff',
+            shape: 'pill', pulse: true, fontSize: 16
+        },
+        sharing: {
+            enabled: true,
+            text: 'TEKAN TOMBOL UNTUK CETAK ➔',
+            x: 80, y: 50, width: 280, height: 70, rotation: 0,
+            bgColor: '#10b981', textColor: '#ffffff', borderColor: '#ffffff',
+            shape: 'pill', pulse: true, fontSize: 16
+        },
+        printing: {
+            enabled: false,
+            text: 'FOTO SEDANG DICETAK...',
+            x: 50, y: 80, width: 260, height: 60, rotation: 0,
+            bgColor: '#1e293b', textColor: '#ffffff', borderColor: '#3b82f6',
+            shape: 'rectangle', pulse: false, fontSize: 15
+        }
+    }
 }
 
 import { apiHelper } from '../lib/apiHelper'

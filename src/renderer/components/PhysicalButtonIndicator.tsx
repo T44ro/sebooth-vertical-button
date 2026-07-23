@@ -2,17 +2,31 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useLocation } from 'react-router-dom'
 import { useAppConfig } from '../stores'
+import { PageButtonIndicatorConfig } from '@shared/types'
 import styles from './PhysicalButtonIndicator.module.css'
 
 interface PhysicalButtonIndicatorProps {
     isEditing?: boolean
     overrideConfig?: any
+    overridePageKey?: string
 }
 
 type DragMode = 'move' | 'resize-se' | 'resize-sw' | 'resize-ne' | 'resize-nw' | 'rotate' | null
 
-export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: PhysicalButtonIndicatorProps): JSX.Element | null {
-    // 1. ALL HOOKS MUST RUN UNCONDITIONALLY AT TOP LEVEL
+export const getPageKeyFromRoute = (pathname: string, hash: string): string => {
+    const target = hash ? hash.replace('#', '') : pathname
+    if (target === '/' || target === '' || target === '/landing') return 'landing'
+    if (target.startsWith('/frames')) return 'frames'
+    if (target.startsWith('/payment')) return 'payment'
+    if (target.startsWith('/capture')) return 'capture'
+    if (target.startsWith('/review')) return 'review'
+    if (target.startsWith('/sharing')) return 'sharing'
+    if (target.startsWith('/printing')) return 'printing'
+    return 'landing'
+}
+
+export function PhysicalButtonIndicator({ isEditing = false, overrideConfig, overridePageKey }: PhysicalButtonIndicatorProps): JSX.Element | null {
+    // 1. ALL HOOKS RUN UNCONDITIONALLY AT TOP LEVEL
     const {
         config,
         updateConfig,
@@ -24,6 +38,40 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
     } = useAppConfig()
 
     const location = useLocation()
+
+    const currentPageKey = overridePageKey || getPageKeyFromRoute(location.pathname, window.location.hash)
+    const pageMap = config.pageButtonIndicators || {}
+    const pageConfig = pageMap[currentPageKey] || {}
+
+    // Helper to update specific page config in Zustand store
+    const updatePageConfig = useCallback((updates: Partial<PageButtonIndicatorConfig>) => {
+        const currentMap = config.pageButtonIndicators || {}
+        const currentCustomPage = currentMap[currentPageKey] || {}
+        const updatedMap = {
+            ...currentMap,
+            [currentPageKey]: {
+                ...currentCustomPage,
+                ...updates
+            }
+        }
+        updateConfig({ pageButtonIndicators: updatedMap })
+    }, [config.pageButtonIndicators, currentPageKey, updateConfig])
+
+    const activeConfig = overrideConfig || {
+        enabled: pageConfig.enabled ?? config.buttonIndicatorEnabled ?? false,
+        text: pageConfig.text ?? config.buttonIndicatorText ?? 'TEKAN TOMBOL DI SINI ➔',
+        x: pageConfig.x ?? config.buttonIndicatorX ?? 80,
+        y: pageConfig.y ?? config.buttonIndicatorY ?? 50,
+        width: pageConfig.width ?? config.buttonIndicatorWidth ?? 260,
+        height: pageConfig.height ?? config.buttonIndicatorHeight ?? 70,
+        rotation: pageConfig.rotation ?? config.buttonIndicatorRotation ?? 0,
+        bgColor: pageConfig.bgColor ?? config.buttonIndicatorBgColor ?? '#ef4444',
+        textColor: pageConfig.textColor ?? config.buttonIndicatorTextColor ?? '#ffffff',
+        borderColor: pageConfig.borderColor ?? config.buttonIndicatorBorderColor ?? '#ffffff',
+        shape: pageConfig.shape ?? config.buttonIndicatorShape ?? 'pill',
+        pulse: pageConfig.pulse ?? config.buttonIndicatorPulse ?? true,
+        fontSize: pageConfig.fontSize ?? config.buttonIndicatorFontSize ?? 16
+    }
 
     const [dragMode, setDragMode] = useState<DragMode>(null)
     const [dragStart, setDragStart] = useState({
@@ -43,14 +91,14 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
         setDragStart({
             mouseX: e.clientX,
             mouseY: e.clientY,
-            posX: config.buttonIndicatorX ?? 80,
-            posY: config.buttonIndicatorY ?? 50,
-            width: config.buttonIndicatorWidth ?? 260,
-            height: config.buttonIndicatorHeight ?? 70,
-            rotation: config.buttonIndicatorRotation ?? 0
+            posX: activeConfig.x,
+            posY: activeConfig.y,
+            width: activeConfig.width,
+            height: activeConfig.height,
+            rotation: activeConfig.rotation
         })
         setDragMode(mode)
-    }, [isLayoutEditMode, config.buttonIndicatorX, config.buttonIndicatorY, config.buttonIndicatorWidth, config.buttonIndicatorHeight, config.buttonIndicatorRotation])
+    }, [isLayoutEditMode, activeConfig.x, activeConfig.y, activeConfig.width, activeConfig.height, activeConfig.rotation])
 
     useEffect(() => {
         if (!dragMode || !isLayoutEditMode) return
@@ -80,9 +128,9 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
                     if (Math.abs(newY - snappedY10) < 1.5) newY = snappedY10
                 }
 
-                updateConfig({
-                    buttonIndicatorX: Math.round(newX * 10) / 10,
-                    buttonIndicatorY: Math.round(newY * 10) / 10
+                updatePageConfig({
+                    x: Math.round(newX * 10) / 10,
+                    y: Math.round(newY * 10) / 10
                 })
             } else if (dragMode.startsWith('resize')) {
                 const isSE = dragMode === 'resize-se'
@@ -102,9 +150,9 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
                 newW = Math.max(120, Math.min(600, Math.round(newW)))
                 newH = Math.max(40, Math.min(350, Math.round(newH)))
 
-                updateConfig({
-                    buttonIndicatorWidth: newW,
-                    buttonIndicatorHeight: newH
+                updatePageConfig({
+                    width: newW,
+                    height: newH
                 })
             } else if (dragMode === 'rotate') {
                 const centerX = screenW * (dragStart.posX / 100)
@@ -124,7 +172,7 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
                     }
                 }
 
-                updateConfig({ buttonIndicatorRotation: degrees })
+                updatePageConfig({ rotation: degrees })
             }
         }
 
@@ -136,11 +184,10 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
             window.removeEventListener('mousemove', handleMouseMove)
             window.removeEventListener('mouseup', handleMouseUp)
         }
-    }, [dragMode, dragStart, isLayoutEditMode, enableMagneticSnap, updateConfig])
+    }, [dragMode, dragStart, isLayoutEditMode, enableMagneticSnap, updatePageConfig])
 
     // 2. EARLY RETURNS PLACED AFTER ALL HOOKS
-    const activeConfig = overrideConfig || config
-    const isEnabled = activeConfig.buttonIndicatorEnabled ?? false
+    const isEnabled = activeConfig.enabled ?? false
     const isInLiveEditMode = isLayoutEditMode || isEditing
 
     if (!isEnabled && !isInLiveEditMode) return null
@@ -149,18 +196,18 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
     const isHostAdmin = location.pathname === '/admin' || window.location.hash.startsWith('#/admin')
     if (isHostAdmin && !isEditing) return null
 
-    const text = activeConfig.buttonIndicatorText || 'TEKAN TOMBOL DI SINI ➔'
-    const posX = activeConfig.buttonIndicatorX ?? 80
-    const posY = activeConfig.buttonIndicatorY ?? 50
-    const width = activeConfig.buttonIndicatorWidth ?? 260
-    const height = activeConfig.buttonIndicatorHeight ?? 70
-    const rotation = activeConfig.buttonIndicatorRotation ?? 0
-    const bgColor = activeConfig.buttonIndicatorBgColor || '#ef4444'
-    const textColor = activeConfig.buttonIndicatorTextColor || '#ffffff'
-    const borderColor = activeConfig.buttonIndicatorBorderColor || '#ffffff'
-    const shape = activeConfig.buttonIndicatorShape || 'pill'
-    const pulse = activeConfig.buttonIndicatorPulse ?? true
-    const fontSize = activeConfig.buttonIndicatorFontSize ?? 16
+    const text = activeConfig.text || 'TEKAN TOMBOL DI SINI ➔'
+    const posX = activeConfig.x ?? 80
+    const posY = activeConfig.y ?? 50
+    const width = activeConfig.width ?? 260
+    const height = activeConfig.height ?? 70
+    const rotation = activeConfig.rotation ?? 0
+    const bgColor = activeConfig.bgColor || '#ef4444'
+    const textColor = activeConfig.textColor || '#ffffff'
+    const borderColor = activeConfig.borderColor || '#ffffff'
+    const shape = activeConfig.shape || 'pill'
+    const pulse = activeConfig.pulse ?? true
+    const fontSize = activeConfig.fontSize ?? 16
 
     // Shape class mapping
     let shapeClass = styles.pill
@@ -189,9 +236,6 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig }: P
             style={wrapperStyle}
         >
             <div className={styles.content}>
-                <div className={styles.buttonIcon}>
-                    <div className={styles.buttonIconInner} />
-                </div>
                 <span>{text}</span>
             </div>
         </div>

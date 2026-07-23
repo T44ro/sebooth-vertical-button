@@ -3523,7 +3523,7 @@ function AdminDashboard(): JSX.Element {
                                     </div>
 
                                     {/* Actual Indicator Render Component */}
-                                    <PhysicalButtonIndicator isEditing={true} overrideConfig={config} />
+                                    <PhysicalButtonIndicator isEditing={true} overridePageKey={indicatorPreviewPage} />
                                 </div>
                             </div>
 

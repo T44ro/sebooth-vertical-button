@@ -110,6 +110,23 @@ export interface SetupConfig {
     emailService?: string
 }
 
+// Page Button Indicator Configuration
+export interface PageButtonIndicatorConfig {
+    enabled?: boolean
+    text?: string
+    x?: number // position X in % (0 - 100)
+    y?: number // position Y in % (0 - 100)
+    width?: number // width in px
+    height?: number // height in px
+    rotation?: number // angle in degrees (0 - 360)
+    bgColor?: string
+    textColor?: string
+    borderColor?: string
+    shape?: 'pill' | 'rectangle' | 'badge' | 'arrow-right' | 'arrow-left' | 'arrow-down' | 'arrow-up'
+    pulse?: boolean
+    fontSize?: number
+}
+
 // Config Types
 export interface AppConfig {
     countdownDuration: number // seconds
@@ -182,7 +199,8 @@ export interface AppConfig {
     cameraOffsetX?: number // Custom X offset in px
     cameraOffsetY?: number // Custom Y offset in px
 
-    // Physical Button Indicator Settings
+
+    // Physical Button Indicator Settings (Global & Per-Page Overrides)
     buttonIndicatorEnabled?: boolean
     buttonIndicatorText?: string
     buttonIndicatorX?: number // position X in % (0 - 100)
@@ -196,6 +214,9 @@ export interface AppConfig {
     buttonIndicatorShape?: 'pill' | 'rectangle' | 'badge' | 'arrow-right' | 'arrow-left' | 'arrow-down' | 'arrow-up'
     buttonIndicatorPulse?: boolean
     buttonIndicatorFontSize?: number
+
+    // Per-Page Button Indicators (independent configuration per page route)
+    pageButtonIndicators?: Record<string, PageButtonIndicatorConfig>
 }
 
 export interface LUTFilter {

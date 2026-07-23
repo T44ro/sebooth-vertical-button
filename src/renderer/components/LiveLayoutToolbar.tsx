@@ -1,5 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppConfig } from '../stores'
+import { getPageKeyFromRoute } from './PhysicalButtonIndicator'
+import { PageButtonIndicatorConfig } from '@shared/types'
 import styles from './LiveLayoutToolbar.module.css'
 
 export function LiveLayoutToolbar(): JSX.Element | null {
@@ -12,8 +14,6 @@ export function LiveLayoutToolbar(): JSX.Element | null {
         setShowGridLines,
         showCenterLines,
         setShowCenterLines,
-        showMarginGuides,
-        setShowMarginGuides,
         enableMagneticSnap,
         setEnableMagneticSnap
     } = useAppConfig()
@@ -24,29 +24,42 @@ export function LiveLayoutToolbar(): JSX.Element | null {
     if (!isLayoutEditMode) return null
 
     const pages = [
-        { path: '/', label: '🏠 Beranda' },
-        { path: '/frames', label: '🖼️ Frame' },
-        { path: '/payment', label: '💳 Payment' },
-        { path: '/capture', label: '📸 Capture' },
-        { path: '/review', label: '🎨 Review' },
-        { path: '/sharing', label: '📲 Sharing' },
-        { path: '/printing', label: '🖨️ Printing' }
+        { path: '/', key: 'landing', label: '🏠 Beranda' },
+        { path: '/frames', key: 'frames', label: '🖼️ Frame' },
+        { path: '/payment', key: 'payment', label: '💳 Payment' },
+        { path: '/capture', key: 'capture', label: '📸 Capture' },
+        { path: '/review', key: 'review', label: '🎨 Review' },
+        { path: '/sharing', key: 'sharing', label: '📲 Sharing' },
+        { path: '/printing', key: 'printing', label: '🖨️ Printing' }
     ]
 
-    const currentHashOrPath = location.pathname === '/' && window.location.hash
-        ? window.location.hash.replace('#', '')
-        : location.pathname
+    const currentPageKey = getPageKeyFromRoute(location.pathname, window.location.hash)
+    const pageMap = config.pageButtonIndicators || {}
+    const pageConfig = pageMap[currentPageKey] || {}
 
-    const currentIndex = pages.findIndex(p => p.path === currentHashOrPath || (p.path !== '/' && currentHashOrPath.startsWith(p.path)))
-    const activeIndex = currentIndex === -1 ? 0 : currentIndex
+    const updatePageConfig = (updates: Partial<PageButtonIndicatorConfig>) => {
+        const currentMap = config.pageButtonIndicators || {}
+        const currentCustomPage = currentMap[currentPageKey] || {}
+        const updatedMap = {
+            ...currentMap,
+            [currentPageKey]: {
+                ...currentCustomPage,
+                ...updates
+            }
+        }
+        updateConfig({ pageButtonIndicators: updatedMap })
+    }
+
+    const activeIndex = pages.findIndex(p => p.key === currentPageKey)
+    const safeIndex = activeIndex === -1 ? 0 : activeIndex
 
     const handleNextPage = () => {
-        const nextIdx = (activeIndex + 1) % pages.length
+        const nextIdx = (safeIndex + 1) % pages.length
         navigate(pages[nextIdx].path)
     }
 
     const handlePrevPage = () => {
-        const prevIdx = (activeIndex - 1 + pages.length) % pages.length
+        const prevIdx = (safeIndex - 1 + pages.length) % pages.length
         navigate(pages[prevIdx].path)
     }
 
@@ -55,24 +68,30 @@ export function LiveLayoutToolbar(): JSX.Element | null {
         navigate('/admin')
     }
 
+    const isEnabled = pageConfig.enabled ?? config.buttonIndicatorEnabled ?? false
+    const text = pageConfig.text ?? config.buttonIndicatorText ?? 'TEKAN TOMBOL DI SINI ➔'
+    const shape = pageConfig.shape ?? config.buttonIndicatorShape ?? 'pill'
+    const bgColor = pageConfig.bgColor ?? config.buttonIndicatorBgColor ?? '#ef4444'
+    const textColor = pageConfig.textColor ?? config.buttonIndicatorTextColor ?? '#ffffff'
+
     return (
         <div className={styles.toolbarContainer}>
-            {/* Left: Mode Title & Enable Switch */}
+            {/* Left: Mode Title & Per-Page Enable Switch */}
             <div className={styles.leftGroup}>
                 <div className={styles.badge}>
                     <span>✏️ LIVE LAYOUT EDITOR</span>
                 </div>
-                <label className={styles.toggleSwitch} title="Aktifkan/Nonaktifkan Penunjuk Tombol">
+                <label className={styles.toggleSwitch} title={`Aktifkan/Nonaktifkan Penunjuk Tombol untuk Halaman (${currentPageKey.toUpperCase()})`}>
                     <input
                         type="checkbox"
-                        checked={config.buttonIndicatorEnabled ?? false}
-                        onChange={(e) => updateConfig({ buttonIndicatorEnabled: e.target.checked })}
+                        checked={isEnabled}
+                        onChange={(e) => updatePageConfig({ enabled: e.target.checked })}
                     />
                     <span className={styles.toggleSlider}></span>
                 </label>
             </div>
 
-            {/* Center: Live Page Nav & Indicator Customization */}
+            {/* Center: Live Page Nav & Per-Page Indicator Customization */}
             <div className={styles.centerGroup}>
                 {/* Page Navigation */}
                 <div className={styles.pageNav}>
@@ -83,7 +102,7 @@ export function LiveLayoutToolbar(): JSX.Element | null {
                     {pages.map((p, idx) => (
                         <button
                             key={p.path}
-                            className={`${styles.navButton} ${idx === activeIndex ? styles.activeNavButton : ''}`}
+                            className={`${styles.navButton} ${idx === safeIndex ? styles.activeNavButton : ''}`}
                             onClick={() => navigate(p.path)}
                         >
                             {p.label}
@@ -95,22 +114,22 @@ export function LiveLayoutToolbar(): JSX.Element | null {
                     </button>
                 </div>
 
-                {/* Text Customization Input */}
+                {/* Text Customization Input for Active Page */}
                 <div className={styles.inputGroup}>
                     <input
                         type="text"
                         className={styles.textInput}
-                        value={config.buttonIndicatorText || ''}
-                        onChange={(e) => updateConfig({ buttonIndicatorText: e.target.value })}
-                        placeholder="Teks Penunjuk..."
+                        value={text}
+                        onChange={(e) => updatePageConfig({ text: e.target.value })}
+                        placeholder="Teks Penunjuk Halaman Ini..."
                     />
                 </div>
 
                 {/* Shape Selector */}
                 <select
                     className={styles.selectInput}
-                    value={config.buttonIndicatorShape || 'pill'}
-                    onChange={(e) => updateConfig({ buttonIndicatorShape: e.target.value as any })}
+                    value={shape}
+                    onChange={(e) => updatePageConfig({ shape: e.target.value as any })}
                 >
                     <option value="pill">💊 Pill</option>
                     <option value="rectangle">⬛ Box</option>
@@ -122,20 +141,20 @@ export function LiveLayoutToolbar(): JSX.Element | null {
                 </select>
 
                 {/* Background & Text Color Pickers */}
-                <div className={styles.inputGroup} title="Warna Background">
+                <div className={styles.inputGroup} title="Warna Background Halaman Ini">
                     <input
                         type="color"
                         className={styles.colorPicker}
-                        value={config.buttonIndicatorBgColor || '#ef4444'}
-                        onChange={(e) => updateConfig({ buttonIndicatorBgColor: e.target.value })}
+                        value={bgColor}
+                        onChange={(e) => updatePageConfig({ bgColor: e.target.value })}
                     />
                 </div>
-                <div className={styles.inputGroup} title="Warna Teks">
+                <div className={styles.inputGroup} title="Warna Teks Halaman Ini">
                     <input
                         type="color"
                         className={styles.colorPicker}
-                        value={config.buttonIndicatorTextColor || '#ffffff'}
-                        onChange={(e) => updateConfig({ buttonIndicatorTextColor: e.target.value })}
+                        value={textColor}
+                        onChange={(e) => updatePageConfig({ textColor: e.target.value })}
                     />
                 </div>
 
