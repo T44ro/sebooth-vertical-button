@@ -20,6 +20,7 @@ export const getPageKeyFromRoute = (pathname: string, hash: string): string => {
     if (target.startsWith('/frames')) return 'frames'
     if (target.startsWith('/payment')) return 'payment'
     if (target.startsWith('/capture')) return 'capture'
+    if (target.startsWith('/photo-review')) return 'photo-review'
     if (target.startsWith('/review')) return 'review'
     if (target.startsWith('/sharing')) return 'sharing'
     if (target.startsWith('/printing')) return 'printing'
@@ -117,6 +118,36 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig, ove
             }
         })
     }, [config, currentPageKey, updateConfig])
+
+    const handleDuplicateIndicator = useCallback((targetId: string) => {
+        const currentMap = config.pageButtonIndicators || {}
+        const currentCustomPage = currentMap[currentPageKey] || {}
+        const currentIndicators = getNormalizedIndicators(currentCustomPage, config)
+
+        const targetItem = currentIndicators.find(i => i.id === targetId) || activeItem
+        if (!targetItem) return
+
+        const newId = `ind_${Date.now()}`
+        const newItem: ButtonIndicatorItem = {
+            ...targetItem,
+            id: newId,
+            x: Math.min(92, Math.max(8, (targetItem.x ?? 50) + 4)),
+            y: Math.min(92, Math.max(8, (targetItem.y ?? 50) + 4))
+        }
+
+        const updatedIndicators = [...currentIndicators, newItem]
+
+        updateConfig({
+            pageButtonIndicators: {
+                ...currentMap,
+                [currentPageKey]: {
+                    ...currentCustomPage,
+                    indicators: updatedIndicators
+                }
+            }
+        })
+        setSelectedIndicatorId(newId)
+    }, [config, currentPageKey, activeItem, updateConfig, setSelectedIndicatorId])
 
     const [dragMode, setDragMode] = useState<DragMode>(null)
     const [dragStart, setDragStart] = useState({
@@ -394,6 +425,79 @@ export function PhysicalButtonIndicator({ isEditing = false, overrideConfig, ove
                                         title="Tarik untuk memutar indikator (Rotate)"
                                     >
                                         ↻
+                                    </div>
+
+                                    {/* Duplicate Knob */}
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleDuplicateIndicator(item.id)
+                                        }}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '-32px',
+                                            right: '-6px',
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#6366f1',
+                                            color: '#ffffff',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '14px',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 4px 10px rgba(0,0,0,0.6)',
+                                            pointerEvents: 'auto'
+                                        }}
+                                        title="Duplikat Tombol Ini (Ukuran & Style Sama)"
+                                    >
+                                        📋
+                                    </div>
+
+                                    {/* On-screen Font Size Adjustment Controls */}
+                                    <div
+                                        style={{
+                                            position: 'absolute',
+                                            bottom: '-34px',
+                                            left: '50%',
+                                            transform: 'translateX(-50%)',
+                                            display: 'flex',
+                                            gap: '4px',
+                                            alignItems: 'center',
+                                            backgroundColor: 'rgba(31, 41, 55, 0.92)',
+                                            padding: '2px 8px',
+                                            borderRadius: '20px',
+                                            border: '1.5px solid #3b82f6',
+                                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                            pointerEvents: 'auto',
+                                            userSelect: 'none'
+                                        }}
+                                    >
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                updateIndicatorItem(item.id, { fontSize: Math.max(8, (item.fontSize ?? 16) - 2) })
+                                            }}
+                                            style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '50%', width: '22px', height: '22px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                            title="Kecilkan Ukuran Font (-2px)"
+                                        >
+                                            A-
+                                        </button>
+                                        <span style={{ color: 'white', fontSize: '11px', fontWeight: 'bold', minWidth: '28px', textAlign: 'center' }}>
+                                            {item.fontSize ?? 16}px
+                                        </span>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                updateIndicatorItem(item.id, { fontSize: Math.min(80, (item.fontSize ?? 16) + 2) })
+                                            }}
+                                            style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '50%', width: '22px', height: '22px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                            title="Besarkan Ukuran Font (+2px)"
+                                        >
+                                            A+
+                                        </button>
                                     </div>
 
                                     {/* Corner Resize Knobs */}

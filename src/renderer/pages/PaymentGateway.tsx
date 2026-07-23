@@ -11,7 +11,9 @@ interface PaymentState {
     status: 'idle' | 'pending' | 'success' | 'failed' | 'expired'
     orderId: string | null
     qrisUrl: string | null
+    qrString: string | null
     transactionId: string | null
+    expiredDatetime: string | null
 }
 
 function PaymentGateway(): JSX.Element {
@@ -25,11 +27,47 @@ function PaymentGateway(): JSX.Element {
         status: 'idle',
         orderId: null,
         qrisUrl: null,
-        transactionId: null
+        qrString: null,
+        transactionId: null,
+        expiredDatetime: null
     })
     const [isCreatingOrder, setIsCreatingOrder] = useState(false)
     const [pollInterval, setPollInterval] = useState<ReturnType<typeof setInterval> | null>(null)
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+
+    const [paymentTimeLeft, setPaymentTimeLeft] = useState<number>(300)
+
+    // Expiration countdown timer effect
+    useEffect(() => {
+        if (payment.status !== 'pending') return
+
+        let targetTime: number
+        if (payment.expiredDatetime) {
+            targetTime = new Date(payment.expiredDatetime).getTime()
+        } else {
+            targetTime = Date.now() + (config.paymentTimeout || 300) * 1000
+        }
+
+        const updateTimer = () => {
+            const diff = Math.max(0, Math.floor((targetTime - Date.now()) / 1000))
+            setPaymentTimeLeft(diff)
+            if (diff <= 0) {
+                setPayment(prev => ({ ...prev, status: 'expired' }))
+            }
+        }
+
+        updateTimer()
+        const timerInterval = setInterval(updateTimer, 1000)
+
+        return () => clearInterval(timerInterval)
+    }, [payment.status, payment.expiredDatetime, config.paymentTimeout])
+
+    // Format MM:SS
+    const formatTimeLeft = (totalSec: number): string => {
+        const m = Math.floor(totalSec / 60).toString().padStart(2, '0')
+        const s = (totalSec % 60).toString().padStart(2, '0')
+        return `${m}:${s}`
+    }
 
     // Calculate total price
     const totalPrice = config.sessionPrice + (additionalPrints * config.additionalPrintPrice)
@@ -60,7 +98,7 @@ function PaymentGateway(): JSX.Element {
 
         try {
             if (isDoku) {
-                // Call electron main IPC to create Doku session securely
+                // Call electron main IPC to create Doku session securely & download QR
                 const res = await (window as any).api.payment.dokuCreateSession({
                     orderId: orderId,
                     amount: totalPrice
@@ -70,8 +108,10 @@ function PaymentGateway(): JSX.Element {
                     setPayment({
                         status: 'pending',
                         orderId: orderId,
-                        qrisUrl: res.data.paymentUrl,
-                        transactionId: null
+                        qrisUrl: res.data.qrisUrl || res.data.paymentUrl,
+                        qrString: res.data.qrString || null,
+                        transactionId: null,
+                        expiredDatetime: res.data.expiredDatetime || null
                     })
                     startPolling(orderId)
                 } else {
@@ -107,7 +147,9 @@ function PaymentGateway(): JSX.Element {
                         status: 'pending',
                         orderId: orderId,
                         qrisUrl: qrisAction?.url || data.actions[0].url,
-                        transactionId: data.transaction_id
+                        qrString: data.qr_string || null,
+                        transactionId: data.transaction_id,
+                        expiredDatetime: data.expiry_time || null
                     })
 
                     // Start polling for payment status
@@ -116,8 +158,10 @@ function PaymentGateway(): JSX.Element {
                     setPayment({
                         status: 'pending',
                         orderId: orderId,
-                        qrisUrl: data.qr_string || null,
-                        transactionId: data.transaction_id
+                        qrisUrl: data.qr_string ? null : (data.actions?.[0]?.url || null),
+                        qrString: data.qr_string || null,
+                        transactionId: data.transaction_id,
+                        expiredDatetime: data.expiry_time || null
                     })
                     startPolling(orderId)
                 } else {
@@ -259,7 +303,7 @@ function PaymentGateway(): JSX.Element {
                 if (payment.status === 'idle') {
                     createOrder()
                 } else if (payment.status === 'expired' || payment.status === 'failed') {
-                    setPayment({ status: 'idle', orderId: null, qrisUrl: null, transactionId: null })
+                    setPayment({ status: 'idle', orderId: null, qrisUrl: null, qrString: null, transactionId: null, expiredDatetime: null })
                 }
             }
         }
@@ -298,94 +342,100 @@ function PaymentGateway(): JSX.Element {
                     <button onClick={handleBack} className={styles.backBtn}>
                         ← Back
                     </button>
-                    <h1>💳 Payment</h1>
+                    <h1>Payment</h1>
                 </header>
 
-                <div className={styles.mainContent}>
+                <div className={`${styles.mainContent} ${payment.status === 'idle' && !isCreatingOrder ? styles.idleState : ''} ${payment.status === 'pending' || isCreatingOrder ? styles.qrActive : ''}`}>
                     {/* Left - Price Summary */}
-                    <div className={styles.priceSection}>
-                        <h2>Order Summary</h2>
-
-                        <div className={styles.priceItem}>
-                            <span>Session (1x 4R print)</span>
-                            <span>Rp {config.sessionPrice.toLocaleString('id-ID')}</span>
-                        </div>
-
-                        <div className={styles.printSelector}>
-                            <span>Additional Prints (per 2)</span>
-                            <div className={styles.quantityControls}>
-                                <button
-                                    onClick={() => handlePrintChange(-2)}
-                                    disabled={additionalPrints === 0}
-                                >
-                                    −
-                                </button>
-                                <span>{additionalPrints}</span>
-                                <button onClick={() => handlePrintChange(2)}>+</button>
-                            </div>
-                        </div>
-
-                        {additionalPrints > 0 && (
+                    <div className={`${styles.priceSection} ${payment.status === 'pending' || isCreatingOrder ? styles.hiddenOnQr : ''}`}>
+                        <div className={styles.orderSummaryHeader}>
+                            <h2>Order Summary</h2>
                             <div className={styles.priceItem}>
-                                <span>Extra prints ({additionalPrints}x)</span>
-                                <span>Rp {(additionalPrints * config.additionalPrintPrice).toLocaleString('id-ID')}</span>
+                                <span>Session (1x 4R print)</span>
+                                <span>Rp {config.sessionPrice.toLocaleString('id-ID')}</span>
                             </div>
-                        )}
-
-                        <div className={styles.priceDivider}></div>
-
-                        <div className={styles.totalPrice}>
-                            <span>Total</span>
-                            <span>Rp {totalPrice.toLocaleString('id-ID')}</span>
                         </div>
 
-                        {payment.status === 'idle' && (
-                            <button
-                                className={styles.payButton}
-                                onClick={createOrder}
-                                disabled={isCreatingOrder}
-                            >
-                                {isCreatingOrder ? 'Creating Order...' : 'Generate QR Code'}
-                            </button>
-                        )}
-                    </div>
-                    <div className={styles.qrSection}>
-                        {payment.status === 'idle' && (
-                            <div className={styles.qrPlaceholder}>
-                                <span>📱</span>
-                                <p>Click "Generate QR Code" to start payment</p>
-                            </div>
-                        )}
-
-                        {payment.status === 'pending' && payment.qrisUrl && (
-                            <div className={styles.qrDisplay}>
-                                <h3>Scan QRIS</h3>
-                                {config.paymentGateway === 'doku' ? (
-                                    <iframe 
-                                        src={payment.qrisUrl} 
-                                        title="Doku QRIS" 
-                                        style={{ 
-                                            width: '100%', 
-                                            height: '380px', 
-                                            border: 'none', 
-                                            borderRadius: '12px',
-                                            background: 'white',
-                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                                        }} 
-                                    />
-                                ) : payment.qrisUrl.startsWith('http') ? (
-                                    <img src={payment.qrisUrl} alt="QRIS" className={styles.qrImage} />
-                                ) : (
-                                    <div className={styles.qrWrapper}>
-                                        <QRCode value={payment.qrisUrl} size={256} />
-                                    </div>
-                                )}
-                                <div className={styles.instructions}>
-                                    <p>{config.paymentInstructions}</p>
+                        <div className={styles.additionalPrintSection}>
+                            <div className={styles.printSelector}>
+                                <span className={styles.printSelectorTitle}>Additional Prints (per 2)</span>
+                                <div className={styles.quantityControls}>
+                                    <button
+                                        onClick={() => handlePrintChange(-2)}
+                                        disabled={additionalPrints === 0}
+                                    >
+                                        −
+                                    </button>
+                                    <span>{additionalPrints}</span>
+                                    <button onClick={() => handlePrintChange(2)}>+</button>
                                 </div>
-                                <div className={styles.spinner}>
-                                    <span></span>
-                                    Waiting for payment...
+                            </div>
+
+                            {additionalPrints > 0 && (
+                                <div className={styles.priceItem}>
+                                    <span>Extra prints ({additionalPrints}x)</span>
+                                    <span>Rp {(additionalPrints * config.additionalPrintPrice).toLocaleString('id-ID')}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className={styles.orderSummaryFooter}>
+                            <div className={styles.priceDivider}></div>
+
+                            <div className={styles.totalPrice}>
+                                <span>Total</span>
+                                <span>Rp {totalPrice.toLocaleString('id-ID')}</span>
+                            </div>
+
+                            {payment.status === 'idle' && (
+                                <button
+                                    className={styles.payButton}
+                                    onClick={createOrder}
+                                    disabled={isCreatingOrder}
+                                >
+                                    {isCreatingOrder ? 'Generating QRIS...' : 'Bayar Sekarang'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {(isCreatingOrder || payment.status !== 'idle') && (
+                        <div className={styles.qrSection}>
+                            {isCreatingOrder && (
+                                <div className={styles.loadingDisplay}>
+                                    <div className={styles.spinnerLarge}></div>
+                                    <h3>Mendownload Kode QRIS...</h3>
+                                    <p>Mohon tunggu sebentar, sistem sedang menyiapkan kode pembayaran Anda.</p>
+                                </div>
+                            )}
+
+                        {!isCreatingOrder && payment.status === 'idle' && null}
+
+                        {!isCreatingOrder && payment.status === 'pending' && (payment.qrString || payment.qrisUrl) && (
+                            <div className={styles.qrDisplay}>
+                                {/* Countdown Timer Badge */}
+                                <div className={styles.timerBadge}>
+                                    <span className={styles.timerIcon}>⏰</span>
+                                    <div className={styles.timerInfo}>
+                                        <span className={styles.timerLabel}>Sisa Waktu Pembayaran</span>
+                                        <span className={styles.timerValue}>{formatTimeLeft(paymentTimeLeft)}</span>
+                                    </div>
+                                </div>
+
+                                <div className={styles.qrCodeContainer}>
+                                    {payment.qrString ? (
+                                        <div className={styles.qrWrapper}>
+                                            <QRCode value={payment.qrString} size={340} />
+                                        </div>
+                                    ) : payment.qrisUrl && (payment.qrisUrl.startsWith('data:image') || payment.qrisUrl.startsWith('http')) ? (
+                                        <div className={styles.qrWrapper}>
+                                            <img src={payment.qrisUrl} alt="Kode QRIS" className={styles.qrImage} />
+                                        </div>
+                                    ) : (
+                                        <div className={styles.qrWrapper}>
+                                            <QRCode value={payment.qrisUrl || ''} size={340} />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -393,17 +443,17 @@ function PaymentGateway(): JSX.Element {
                         {payment.status === 'success' && (
                             <div className={styles.successDisplay}>
                                 <span className={styles.successIcon}>✓</span>
-                                <h3>Payment Successful!</h3>
-                                <p>Redirecting to capture...</p>
+                                <h3>Pembayaran Berhasil!</h3>
+                                <p>Mengalihkan ke sesi foto...</p>
                             </div>
                         )}
 
                         {payment.status === 'expired' && (
                             <div className={styles.errorDisplay}>
                                 <span>⏰</span>
-                                <h3>Payment Expired</h3>
-                                <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, transactionId: null })}>
-                                    Try Again
+                                <h3>Waktu Pembayaran Habis</h3>
+                                <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, qrString: null, transactionId: null, expiredDatetime: null })}>
+                                    Coba Lagi
                                 </button>
                             </div>
                         )}
@@ -411,30 +461,24 @@ function PaymentGateway(): JSX.Element {
                         {payment.status === 'failed' && (
                             <div className={styles.errorDisplay}>
                                 <span>❌</span>
-                                <h3>Payment Failed</h3>
-                                <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, transactionId: null })}>
-                                    Try Again
+                                <h3>Pembayaran Gagal</h3>
+                                <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, qrString: null, transactionId: null, expiredDatetime: null })}>
+                                    Coba Lagi
                                 </button>
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* Skip for testing */}
-                {import.meta.env.DEV && (
-                    <button onClick={handleSkip} className={styles.skipBtn}>
-                        [DEV] Skip Payment
-                    </button>
                 )}
-
                 </div>
 
-                <ConfirmBackHomeModal
-                    isOpen={isConfirmModalOpen}
-                    onClose={() => setIsConfirmModalOpen(false)}
-                    onConfirm={handleConfirmBackHome}
-                />
-            </motion.div>
+            </div>
+
+            <ConfirmBackHomeModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                onConfirm={handleConfirmBackHome}
+            />
+        </motion.div>
     )
 }
 

@@ -3277,7 +3277,8 @@ function AdminDashboard(): JSX.Element {
                                     { id: 'frames', label: '🖼️ Pilih Frame' },
                                     { id: 'payment', label: '💳 Pembayaran' },
                                     { id: 'capture', label: '📸 Sesi Foto' },
-                                    { id: 'review', label: '🎨 Review Foto' },
+                                    { id: 'photo-review', label: '📷 Review Photo Strip' },
+                                    { id: 'review', label: '🎨 Filter Review' },
                                     { id: 'sharing', label: '📲 Sharing QR' },
                                     { id: 'printing', label: '🖨️ Cetak' }
                                 ].map((page) => (

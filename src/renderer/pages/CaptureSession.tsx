@@ -728,13 +728,12 @@ function CaptureSession(): JSX.Element {
         photos.some(p => p.slotId === slot.id)
     )
 
-    // Auto-navigate to review popup when all slots are filled
+    // Auto-navigate to dedicated Review Your Photos page when all slots are filled
     useEffect(() => {
         if (allSlotsFilled && captureState === 'idle') {
-            setCaptureState('reviewPopup')
-            setReviewPhotoIndex(0)
+            navigate('/photo-review')
         }
-    }, [allSlotsFilled, captureState])
+    }, [allSlotsFilled, captureState, navigate])
 
     // Keyboard navigation
     useEffect(() => {

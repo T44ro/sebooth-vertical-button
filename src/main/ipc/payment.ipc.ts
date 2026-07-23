@@ -1,6 +1,99 @@
-import { IpcMain } from 'electron'
+import { IpcMain, BrowserWindow } from 'electron'
 import crypto from 'crypto'
 import { configService } from '../services/ConfigService'
+
+// Helper to extract QR code offscreen from DOKU checkout page
+async function extractDokuQrCode(paymentUrl: string): Promise<{ qrisUrl: string | null; qrString: string | null }> {
+    return new Promise((resolve) => {
+        let win: BrowserWindow | null = new BrowserWindow({
+            width: 800,
+            height: 600,
+            show: false,
+            webPreferences: {
+                offscreen: true,
+                nodeIntegration: false,
+                contextIsolation: true
+            }
+        })
+
+        let resolved = false
+        const cleanup = () => {
+            if (win) {
+                try {
+                    win.destroy()
+                } catch (e) {}
+                win = null
+            }
+        }
+
+        const timeout = setTimeout(() => {
+            if (!resolved) {
+                resolved = true
+                console.warn('[doku.ipc] Offscreen QR code extraction timed out after 8s')
+                cleanup()
+                resolve({ qrisUrl: null, qrString: null })
+            }
+        }, 8000)
+
+        win.loadURL(paymentUrl).catch(() => {})
+
+        const checkInterval = setInterval(async () => {
+            if (!win || resolved) {
+                clearInterval(checkInterval)
+                return
+            }
+
+            try {
+                const result = await win.webContents.executeJavaScript(`
+                    (() => {
+                        try {
+                            const rawData = localStorage.getItem('qris_data');
+                            let qrString = null;
+                            if (rawData) {
+                                const parsed = JSON.parse(rawData);
+                                if (parsed && parsed.qr_code) {
+                                    qrString = parsed.qr_code;
+                                }
+                            }
+
+                            const canvas = document.querySelector('canvas');
+                            let dataUrl = null;
+                            if (canvas) {
+                                dataUrl = canvas.toDataURL('image/png');
+                            }
+
+                            if (!dataUrl) {
+                                const imgs = Array.from(document.querySelectorAll('img'));
+                                const qrImg = imgs.find(img => img.src && (img.src.includes('qr') || img.src.includes('data:image')));
+                                if (qrImg) {
+                                    dataUrl = qrImg.src;
+                                }
+                            }
+
+                            if (dataUrl || qrString) {
+                                return { dataUrl, qrString };
+                            }
+                        } catch (e) {
+                            return null;
+                        }
+                        return null;
+                    })()
+                `)
+
+                if (result && (result.dataUrl || result.qrString)) {
+                    resolved = true
+                    clearInterval(checkInterval)
+                    clearTimeout(timeout)
+                    cleanup()
+                    console.log('[doku.ipc] Successfully extracted QR code offscreen!')
+                    resolve({ qrisUrl: result.dataUrl, qrString: result.qrString })
+                }
+            } catch (err) {
+                // DOM not ready yet
+            }
+        }, 400)
+    })
+}
 
 // Helper to generate signature according to Doku specification
 function generateDokuSignature(
@@ -94,12 +187,22 @@ export function registerPaymentHandlers(ipcMain: IpcMain): void {
             const data: any = await response.json()
             
             if (response.ok && data.response?.payment?.url) {
-                console.log(`[doku.ipc] Checkout session created successfully. URL: ${data.response.payment.url}`)
+                const paymentUrl = data.response.payment.url
+                const expiredDatetime = data.response.payment.expired_datetime || data.response.payment.expired_date || null
+                console.log(`[doku.ipc] Checkout session created. URL: ${paymentUrl}. Downloading QR code offscreen...`)
+
+                // Extract QR code image / string offscreen
+                const extracted = await extractDokuQrCode(paymentUrl)
+
                 return {
                     success: true,
                     data: {
-                        paymentUrl: data.response.payment.url,
-                        invoiceNumber: params.orderId
+                        paymentUrl: paymentUrl,
+                        invoiceNumber: params.orderId,
+                        qrisUrl: extracted.qrisUrl || paymentUrl,
+                        qrString: extracted.qrString || null,
+                        expiredDatetime: expiredDatetime,
+                        paymentDueDateMinutes: data.response.payment.payment_due_date || 60
                     }
                 }
             } else {
@@ -117,6 +220,7 @@ export function registerPaymentHandlers(ipcMain: IpcMain): void {
             }
         }
     })
+
 
     // 2. Check Doku Checkout Payment Status
     ipcMain.handle('payment:doku-check-status', async (_, params: { invoiceNumber: string }) => {

@@ -1,3 +1,4 @@
+import { useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppConfig } from '../stores'
 import { getPageKeyFromRoute, getNormalizedIndicators } from './PhysicalButtonIndicator'
@@ -23,18 +24,6 @@ export function LiveLayoutToolbar(): JSX.Element | null {
     const navigate = useNavigate()
     const location = useLocation()
 
-    if (!isLayoutEditMode) return null
-
-    const pages = [
-        { path: '/', key: 'landing', label: '🏠 Beranda' },
-        { path: '/frames', key: 'frames', label: '🖼️ Frame' },
-        { path: '/payment', key: 'payment', label: '💳 Payment' },
-        { path: '/capture', key: 'capture', label: '📸 Capture' },
-        { path: '/review', key: 'review', label: '🎨 Review' },
-        { path: '/sharing', key: 'sharing', label: '📲 Sharing' },
-        { path: '/printing', key: 'printing', label: '🖨️ Printing' }
-    ]
-
     const currentPageKey = getPageKeyFromRoute(location.pathname, window.location.hash)
     const pageMap = config.pageButtonIndicators || {}
     const pageConfig = pageMap[currentPageKey] || {}
@@ -47,7 +36,7 @@ export function LiveLayoutToolbar(): JSX.Element | null {
 
     const activeItem = indicatorsList.find(item => item.id === activeSelectedId) || indicatorsList[0]
 
-    const updatePageIndicators = (newIndicators: ButtonIndicatorItem[]) => {
+    const updatePageIndicators = useCallback((newIndicators: ButtonIndicatorItem[]) => {
         const currentMap = config.pageButtonIndicators || {}
         const currentCustomPage = currentMap[currentPageKey] || {}
         updateConfig({
@@ -59,7 +48,7 @@ export function LiveLayoutToolbar(): JSX.Element | null {
                 }
             }
         })
-    }
+    }, [config, currentPageKey, updateConfig])
 
     const updateActiveItem = (updates: Partial<ButtonIndicatorItem>) => {
         const updatedList = indicatorsList.map(item => {
@@ -94,12 +83,58 @@ export function LiveLayoutToolbar(): JSX.Element | null {
         setSelectedIndicatorId(newId)
     }
 
+    const handleDuplicateIndicator = useCallback(() => {
+        if (!activeItem) return
+        const newId = `ind_${Date.now()}`
+        const newItem: ButtonIndicatorItem = {
+            ...activeItem,
+            id: newId,
+            x: Math.min(92, Math.max(8, (activeItem.x ?? 50) + 4)),
+            y: Math.min(92, Math.max(8, (activeItem.y ?? 50) + 4))
+        }
+        const updatedList = [...indicatorsList, newItem]
+        updatePageIndicators(updatedList)
+        setSelectedIndicatorId(newId)
+    }, [activeItem, indicatorsList, updatePageIndicators, setSelectedIndicatorId])
+
     const handleDeleteIndicator = () => {
         if (indicatorsList.length <= 1) return
         const updatedList = indicatorsList.filter(item => item.id !== activeSelectedId)
         updatePageIndicators(updatedList)
         setSelectedIndicatorId(updatedList[0]?.id || null)
     }
+
+    // Keyboard shortcut for Ctrl+D (duplicate)
+    useEffect(() => {
+        if (!isLayoutEditMode) return
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+                return
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+                e.preventDefault()
+                handleDuplicateIndicator()
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isLayoutEditMode, handleDuplicateIndicator])
+
+    if (!isLayoutEditMode) return null
+
+    const pages = [
+        { path: '/', key: 'landing', label: '🏠 Beranda' },
+        { path: '/frames', key: 'frames', label: '🖼️ Frame' },
+        { path: '/payment', key: 'payment', label: '💳 Payment' },
+        { path: '/capture', key: 'capture', label: '📸 Capture' },
+        { path: '/photo-review', key: 'photo-review', label: '📷 Photo Review' },
+        { path: '/review', key: 'review', label: '🎨 Filter Review' },
+        { path: '/sharing', key: 'sharing', label: '📲 Sharing' },
+        { path: '/printing', key: 'printing', label: '🖨️ Printing' }
+    ]
 
     const activeIndex = pages.findIndex(p => p.key === currentPageKey)
     const safeIndex = activeIndex === -1 ? 0 : activeIndex
@@ -124,6 +159,7 @@ export function LiveLayoutToolbar(): JSX.Element | null {
     const itemShape = activeItem?.shape || 'pill'
     const itemBgColor = activeItem?.bgColor || '#ef4444'
     const itemTextColor = activeItem?.textColor || '#ffffff'
+    const itemFontSize = activeItem?.fontSize ?? 16
 
     return (
         <div className={styles.toolbarContainer}>
@@ -195,7 +231,15 @@ export function LiveLayoutToolbar(): JSX.Element | null {
                         style={{ background: '#10b981', color: 'white', fontWeight: 'bold' }}
                         title="Tambah Penunjuk Tombol Baru ke Halaman Ini"
                     >
-                        ➕ Penunjuk Baru
+                        ➕ Baru
+                    </button>
+                    <button
+                        className={styles.navButton}
+                        onClick={handleDuplicateIndicator}
+                        style={{ background: '#6366f1', color: 'white', fontWeight: 'bold' }}
+                        title="Duplikat Penunjuk Terpilih dengan Ukuran & Style Sama (Ctrl+D)"
+                    >
+                        📋 Duplikat
                     </button>
                 </div>
 
@@ -208,6 +252,36 @@ export function LiveLayoutToolbar(): JSX.Element | null {
                         onChange={(e) => updateActiveItem({ text: e.target.value })}
                         placeholder="Teks Penunjuk Terpilih..."
                     />
+                </div>
+
+                {/* Font Size Control (Resize Font) */}
+                <div className={styles.inputGroup} title="Ukuran Font Teks (Font Size)">
+                    <span style={{ fontSize: '11px', opacity: 0.85, whiteSpace: 'nowrap', fontWeight: '600', color: '#ffffff' }}>🔤 Font:</span>
+                    <button
+                        className={styles.navButton}
+                        onClick={() => updateActiveItem({ fontSize: Math.max(8, itemFontSize - 1) })}
+                        style={{ padding: '2px 8px', fontSize: '14px', lineHeight: 1 }}
+                        title="Kecilkan Font (-1px)"
+                    >
+                        −
+                    </button>
+                    <input
+                        type="number"
+                        min="8"
+                        max="80"
+                        className={styles.textInput}
+                        style={{ width: '48px', textAlign: 'center', padding: '4px 2px' }}
+                        value={itemFontSize}
+                        onChange={(e) => updateActiveItem({ fontSize: Math.max(8, Math.min(80, Number(e.target.value) || 16)) })}
+                    />
+                    <button
+                        className={styles.navButton}
+                        onClick={() => updateActiveItem({ fontSize: Math.min(80, itemFontSize + 1) })}
+                        style={{ padding: '2px 8px', fontSize: '14px', lineHeight: 1 }}
+                        title="Besarkan Font (+1px)"
+                    >
+                        +
+                    </button>
                 </div>
 
                 {/* Shape Selector */}

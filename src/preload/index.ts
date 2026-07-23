@@ -335,7 +335,14 @@ const api = {
 
     // Payment APIs (Doku Integration)
     payment: {
-        dokuCreateSession: (params: { orderId: string; amount: number }): Promise<APIResponse<{ paymentUrl: string; invoiceNumber: string }>> =>
+        dokuCreateSession: (params: { orderId: string; amount: number }): Promise<APIResponse<{ 
+            paymentUrl: string; 
+            invoiceNumber: string;
+            qrisUrl?: string | null;
+            qrString?: string | null;
+            expiredDatetime?: string | null;
+            paymentDueDateMinutes?: number;
+        }>> =>
             ipcRenderer.invoke('payment:doku-create-session', params),
         
         dokuCheckStatus: (params: { invoiceNumber: string }): Promise<APIResponse<{ status: string; raw: any }>> =>

@@ -7,6 +7,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import FrameSelection from './pages/FrameSelection'
 import PaymentGateway from './pages/PaymentGateway'
 import CaptureSession from './pages/CaptureSession'
+import PhotoReviewPage from './pages/PhotoReviewPage'
 import ReviewSession from './pages/ReviewSession'
 import OutputPage from './pages/OutputPage'
 import SharingPage from './pages/SharingPage'
@@ -62,6 +63,7 @@ function App(): JSX.Element {
                     <Route path="/frames" element={<FrameSelection />} />
                     <Route path="/payment" element={<PaymentGateway />} />
                     <Route path="/capture" element={<CaptureSession />} />
+                    <Route path="/photo-review" element={<PhotoReviewPage />} />
                     <Route path="/review" element={<ReviewSession />} />
                     <Route path="/output" element={<OutputPage />} />
                     <Route path="/sharing" element={<SharingPage />} />
