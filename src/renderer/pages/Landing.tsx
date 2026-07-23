@@ -158,24 +158,17 @@ function Landing(): JSX.Element {
         }
     }, [liveCameraEnabled, config.selectedCameraId])
 
-    const handleAdminHoldStart = useCallback(() => {
-        const timer = setInterval(() => {
-            setHoldProgress(prev => {
-                if (prev >= 100) {
-                    clearInterval(timer)
-                    setShowAdminModal(true)
-                    return 0
-                }
-                return prev + 5
-            })
-        }, 50)
-        setHoldTimer(timer)
-    }, [])
+    const [pinSequence, setPinSequence] = useState('')
+    const key1HoldTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const key1PressTimeRef = useRef<number | null>(null)
 
-    const handleAdminHoldEnd = useCallback(() => {
-        if (holdTimer) { clearInterval(holdTimer); setHoldTimer(null) }
+    const clearKey1Timer = useCallback(() => {
+        if (key1HoldTimerRef.current) {
+            clearInterval(key1HoldTimerRef.current)
+            key1HoldTimerRef.current = null
+        }
         setHoldProgress(0)
-    }, [holdTimer])
+    }, [])
 
     const handleCameraSelect = async (cameraId: string): Promise<void> => {
         const camera = cameras.find(c => c.id === cameraId)
@@ -187,7 +180,7 @@ function Landing(): JSX.Element {
         }
     }
 
-    const handleStart = async (): Promise<void> => {
+    const handleStart = useCallback(async (): Promise<void> => {
         setIsLoading(true)
         try {
             if (!isConnected && selectedCamera) {
@@ -205,26 +198,97 @@ function Landing(): JSX.Element {
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [isConnected, selectedCamera, setConnected, config.activeFrameId, setActiveFrame, frames, navigate])
 
+    // Keydown & Keyup listener for 5-second Key 1 Hold and Sequential PIN 123
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-            if (e.key === '1' || e.key === '2' || e.key === '3') {
+
+            // If Admin Modal is open, handle sequential PIN entry (1 -> 2 -> 3)
+            if (showAdminModal) {
+                if (e.key === '1' || e.key === '2' || e.key === '3') {
+                    e.preventDefault()
+                    const nextSeq = pinSequence + e.key
+                    setPinSequence(nextSeq)
+                    
+                    if (nextSeq === '123' || nextSeq === '1234') {
+                        setShowAdminModal(false)
+                        setPinSequence('')
+                        setAdminPassword('')
+                        navigate('/admin')
+                    } else if (nextSeq.length >= 3) {
+                        setPasswordError(true)
+                        setTimeout(() => {
+                            setPasswordError(false)
+                            setPinSequence('')
+                        }, 1000)
+                    }
+                }
+                return
+            }
+
+            // Normal Landing Page Key Navigation
+            if (e.key === '1') {
+                if (e.repeat) return
+                // Start 5-second hold timer for Key 1
+                key1PressTimeRef.current = Date.now()
+                clearKey1Timer()
+                
+                key1HoldTimerRef.current = setInterval(() => {
+                    if (!key1PressTimeRef.current) return
+                    const elapsed = Date.now() - key1PressTimeRef.current
+                    const progress = Math.min(100, (elapsed / 5000) * 100)
+                    setHoldProgress(progress)
+
+                    if (elapsed >= 5000) {
+                        clearKey1Timer()
+                        key1PressTimeRef.current = null
+                        setShowAdminModal(true)
+                        setPinSequence('')
+                        setPasswordError(false)
+                    }
+                }, 50)
+
+            } else if (e.key === '2' || e.key === '3') {
                 e.preventDefault()
                 handleStart()
             }
         }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [handleStart])
 
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+            if (showAdminModal) return
+
+            if (e.key === '1') {
+                if (key1PressTimeRef.current) {
+                    const elapsed = Date.now() - key1PressTimeRef.current
+                    clearKey1Timer()
+                    key1PressTimeRef.current = null
+
+                    // If released under 2 seconds, treat as normal start button press
+                    if (elapsed < 2000) {
+                        handleStart()
+                    }
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        window.addEventListener('keyup', handleKeyUp)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+            window.removeEventListener('keyup', handleKeyUp)
+            clearKey1Timer()
+        }
+    }, [showAdminModal, pinSequence, handleStart, clearKey1Timer, navigate])
 
     const handleAdminSubmit = (e: React.FormEvent): void => {
         e.preventDefault()
-        if (adminPassword === ADMIN_PASSWORD) {
+        if (adminPassword === '123' || adminPassword === ADMIN_PASSWORD || pinSequence === '123') {
             setShowAdminModal(false)
             setAdminPassword('')
+            setPinSequence('')
             navigate('/admin')
         } else {
             setPasswordError(true)
@@ -355,14 +419,14 @@ function Landing(): JSX.Element {
                         </AnimatePresence>
                     </div>
 
-                    {/* Hidden admin long-press trigger */}
+                    {/* Admin trigger gear icon */}
                     <div
                         className={styles.adminTrigger}
-                        onMouseDown={handleAdminHoldStart}
-                        onMouseUp={handleAdminHoldEnd}
-                        onMouseLeave={handleAdminHoldEnd}
-                        onTouchStart={handleAdminHoldStart}
-                        onTouchEnd={handleAdminHoldEnd}
+                        onClick={() => {
+                            setShowAdminModal(true)
+                            setPinSequence('')
+                            setPasswordError(false)
+                        }}
                         title="Admin"
                     >
                         <div className={styles.adminProgress} style={{ width: `${holdProgress}%` }} />
@@ -427,6 +491,26 @@ function Landing(): JSX.Element {
                 )}
             </motion.div>
 
+            {/* ── 5-Second Key 1 Hold Progress Bar ── */}
+            {holdProgress > 0 && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100vw',
+                    height: '8px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                    zIndex: 9999
+                }}>
+                    <div style={{
+                        width: `${holdProgress}%`,
+                        height: '100%',
+                        backgroundColor: '#ef4444',
+                        transition: 'width 0.05s linear'
+                    }} />
+                </div>
+            )}
+
             {/* ── ADMIN MODAL ── */}
             <AnimatePresence>
                 {showAdminModal && (
@@ -444,17 +528,55 @@ function Landing(): JSX.Element {
                             exit={{ scale: 0.9, y: 20 }}
                             onClick={e => e.stopPropagation()}
                         >
-                            <h3>Admin Access</h3>
+                            <h3>🔒 Admin Access</h3>
+                            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px', textAlign: 'center' }}>
+                                Tekan tombol <b>1 ➔ 2 ➔ 3</b> secara berurutan
+                            </p>
+
+                            {/* Sequential PIN Dots Indicator */}
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '20px' }}>
+                                {[0, 1, 2].map((i) => (
+                                    <div
+                                        key={i}
+                                        style={{
+                                            width: '20px',
+                                            height: '20px',
+                                            borderRadius: '50%',
+                                            border: '2px solid #3b82f6',
+                                            backgroundColor: pinSequence.length > i ? '#3b82f6' : 'transparent',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                    />
+                                ))}
+                            </div>
+
                             <form onSubmit={handleAdminSubmit}>
                                 <input
                                     type="password"
-                                    placeholder="Enter password"
-                                    value={adminPassword}
+                                    placeholder="Atau ketik PIN 123"
+                                    value={adminPassword || pinSequence}
                                     onChange={e => setAdminPassword(e.target.value)}
                                     className={`${styles.passwordInput} ${passwordError ? styles.error : ''}`}
                                     autoFocus
                                 />
-                                <button type="submit" className={styles.submitButton}>Enter</button>
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAdminModal(false)}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Batal
+                                    </button>
+                                    <button type="submit" className={styles.submitButton} style={{ flex: 1 }}>Enter</button>
+                                </div>
                             </form>
                         </motion.div>
                     </motion.div>

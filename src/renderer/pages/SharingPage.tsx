@@ -86,7 +86,14 @@ function SharingPage(): JSX.Element {
     }
 
     const handlePrint = () => {
-        setIsPrintModalOpen(true)
+        const paidQuantity = currentSession?.printQuantity
+        if (paidQuantity && paidQuantity > 0) {
+            console.log('[SharingPage] Paid quantity found from Payment Gateway:', paidQuantity)
+            console.log('[SharingPage] Navigating to /printing directly with printQuantity:', paidQuantity)
+            navigate('/printing', { state: { printQuantity: paidQuantity } })
+        } else {
+            setIsPrintModalOpen(true)
+        }
     }
 
     const handlePrintConfirm = (quantity: number) => {
@@ -142,18 +149,20 @@ function SharingPage(): JSX.Element {
 
             if (e.key === '1') {
                 e.preventDefault()
-                handleHome()
+                handlePrint()
             } else if (e.key === '2') {
                 e.preventDefault()
-                handlePrint()
+                handleHome()
+            } else if (e.key === '3') {
+                e.preventDefault()
+                // Button 3 is disabled on Sharing page
             }
         }
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [isPrintModalOpen, isConfirmModalOpen, handleHome])
+    }, [isPrintModalOpen, isConfirmModalOpen, handleHome, handlePrint])
 
     return (
-
         <div className={styles.container}>
             <motion.h1 
                 initial={{ y: -50, opacity: 0 }}
@@ -190,48 +199,24 @@ function SharingPage(): JSX.Element {
                 ) : qrUrl ? (
                     <>
                         <div className={styles.qrCode}>
-                            <QRCode value={qrUrl} size={360} level="H" />
+                            <QRCode value={qrUrl} size={460} level="H" />
                         </div>
-                        <p className={styles.scanText}>Aim your camera here</p>
+                        <p className={styles.scanText}>📷 Aim your camera here</p>
                     </>
                 ) : null}
             </motion.div>
-
-            <div className={styles.bottomControls}>
-                <motion.button 
-                    initial={{ x: -30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                    className={styles.homeButton}
-                    onClick={handleHome}
-                >
-                    <img src="./assets/icons/icon-home.png" alt="Home" className={styles.btnIcon} />
-                    Done (Home)
-                </motion.button>
-                
-                <motion.button 
-                    initial={{ x: 30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                    className={styles.printButton}
-                    onClick={handlePrint}
-                >
-                    <img src="./assets/icons/icon-printer.png" alt="Print" className={styles.btnIcon} />
-                    Print Photos
 
             <ConfirmBackHomeModal
                 isOpen={isConfirmModalOpen}
                 onClose={() => setIsConfirmModalOpen(false)}
                 onConfirm={handleConfirmBackHome}
             />
-                </motion.button>
-            </div>
 
             <PrintQuantityModal
                 isOpen={isPrintModalOpen}
                 onClose={() => setIsPrintModalOpen(false)}
                 onConfirm={handlePrintConfirm}
-                initialQuantity={2}
+                initialQuantity={currentSession?.printQuantity || 2}
             />
         </div>
     )

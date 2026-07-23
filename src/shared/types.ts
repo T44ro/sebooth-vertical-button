@@ -101,6 +101,7 @@ export interface SessionData {
     createdAt: number
     compositePath?: string
     cloudSessionId?: string
+    printQuantity?: number // Paid print quantity (number of photo strips)
 }
 
 export interface SetupConfig {
@@ -221,6 +222,7 @@ export interface AppConfig {
 
 
     // Physical Button Indicator Settings (Global & Per-Page Overrides)
+    skipViewRequirement?: boolean // Skip mandatory 1-by-1 result viewing requirement on Output Page
     buttonIndicatorEnabled?: boolean
     buttonIndicatorText?: string
     buttonIndicatorX?: number // position X in % (0 - 100)

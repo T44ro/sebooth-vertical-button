@@ -53,6 +53,7 @@ export class ConfigService {
         printServerUrl: '',
         deviceName: 'Booth A',
         // Camera Preview Adjustments
+        skipViewRequirement: false,
         cameraZoom: 1.0,
         cameraScaleX: 1.0,
         cameraScaleY: 1.0,

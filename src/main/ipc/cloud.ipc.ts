@@ -62,7 +62,7 @@ setInterval(async () => {
       uploadQueue.incrementRetry(item.id);
     }
   }
-}, 30000); // Check every 30 seconds
+}, 10000); // Check every 10 seconds for fast offline recovery
 
 export function registerCloudHandlers(): void {
   ipcMain.handle('cloud:upload-file', async (_, params: {

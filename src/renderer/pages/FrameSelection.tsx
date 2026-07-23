@@ -88,7 +88,7 @@ function FrameSelection(): JSX.Element {
     }, [displayFrames, focusedIndex])
 
     const isPortrait = config.appOrientation === 'portrait'
-    const cardSpacing = isPortrait ? 270 : 340
+    const cardSpacing = isPortrait ? 420 : 540
 
     return (
         <motion.div
@@ -144,7 +144,7 @@ function FrameSelection(): JSX.Element {
                                 const isFocused = index === focusedIndex
 
                                 // Calculate scale, opacity, x position based on distance from center
-                                const scale = isFocused ? 1.22 : Math.max(0.7, 0.9 - Math.abs(offset) * 0.15)
+                                const scale = isFocused ? 1.38 : Math.max(0.60, 0.78 - Math.abs(offset) * 0.2)
                                 const opacity = isFocused ? 1 : Math.max(0, 0.65 - (Math.abs(offset) - 1) * 0.3)
                                 const zIndex = isFocused ? 20 : 10 - Math.abs(offset)
                                 const translateX = offset * cardSpacing

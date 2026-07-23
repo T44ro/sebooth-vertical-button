@@ -196,10 +196,11 @@ function PaymentGateway(): JSX.Element {
                             setPollInterval(null)
                             setPayment(prev => ({ ...prev, status: 'success' }))
 
-                            // Start session and navigate to capture
+                            // Start session and navigate to capture with paid print quantity
                             setTimeout(() => {
                                 if (activeFrame) {
-                                    startSession(activeFrame.id)
+                                    const paidQuantity = 2 + additionalPrints
+                                    startSession(activeFrame.id, paidQuantity)
                                 }
                                 navigate('/capture')
                             }, 2000)
@@ -227,10 +228,11 @@ function PaymentGateway(): JSX.Element {
                         setPollInterval(null)
                         setPayment(prev => ({ ...prev, status: 'success' }))
 
-                        // Start session and navigate to capture
+                        // Start session and navigate to capture with paid print quantity
                         setTimeout(() => {
                             if (activeFrame) {
-                                startSession(activeFrame.id)
+                                const paidQuantity = 2 + additionalPrints
+                                startSession(activeFrame.id, paidQuantity)
                             }
                             navigate('/capture')
                         }, 2000)
@@ -279,7 +281,8 @@ function PaymentGateway(): JSX.Element {
     // Handle skip (for testing)
     const handleSkip = (): void => {
         if (activeFrame) {
-            startSession(activeFrame.id)
+            const paidQuantity = 2 + additionalPrints
+            startSession(activeFrame.id, paidQuantity)
         }
         navigate('/capture')
     }

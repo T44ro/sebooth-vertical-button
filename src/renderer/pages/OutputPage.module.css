@@ -3,206 +3,291 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    background: var(--clay-blue); /* Sky blue */
-    position: relative;
-    overflow: hidden;
-}
-
-/* Decorative background circle */
-.container::before {
-    content: '';
-    position: absolute;
-    width: 70vw;
-    height: 70vw;
-    top: -30%;
-    left: -20%;
-    background: rgba(255,255,255,0.06);
-    border-radius: 50%;
-}
-
-/* 3 Initial Buttons Layout */
-.buttonsContainer {
-    display: flex;
-    gap: 36px;
-    z-index: 10;
-}
-
-/* White floating tall card */
-.mediaButton {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 260px;
-    height: 360px;
-    background: #FFFFFF;
-    border: none;
-    border-radius: var(--radius-2xl);
-    cursor: pointer;
-    transition: all var(--transition-bouncy);
-    box-shadow: var(--clay-shadow-lg);
-    overflow: hidden;
-    position: relative;
-}
-
-.mediaButton:hover { transform: translateY(-14px) scale(1.03); box-shadow: var(--clay-shadow-xl); }
-.mediaButton:active { transform: scale(0.92) translateY(5px); box-shadow: var(--clay-shadow-sm); }
-
-.buttonIcon {
-    width: 140px;
-    height: 140px;
-    margin-bottom: 24px;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.buttonIcon img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    filter: drop-shadow(0 10px 20px rgba(0,0,0,0.15));
-    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.mediaButton:hover .buttonIcon img {
-    transform: scale(1.1) rotate(2deg);
-}
-
-.buttonText {
-    color: #1A1A2E;
-    font-size: 22px;
-    font-weight: 900;
-    letter-spacing: 0.5px;
-    z-index: 2;
-}
-
-/* Viewed Indicator */
-.viewed {
-    border: 3px solid var(--clay-green) !important;
-}
-
-.viewedCheck {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-    width: 32px;
-    height: 32px;
-    background: var(--clay-green);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 900;
-    font-size: 18px;
-    z-index: 5;
-    box-shadow: 0 4px 10px rgba(62, 193, 138, 0.4);
-    animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes popIn {
-    0% { transform: scale(0); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-}
-
-/* Immersive Showcase */
-.showcaseContainer {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
-    z-index: 20;
-    background: rgba(26, 26, 46, 0.88);
-    backdrop-filter: blur(20px);
-}
-
-.showcaseHeader {
-    width: 100%;
-    display: flex;
     justify-content: space-between;
     align-items: center;
-    position: absolute;
-    top: 40px;
-    padding: 0 60px;
+    background: var(--clay-blue); /* Sky blue background */
+    position: relative;
+    overflow: hidden;
+    padding: var(--spacing-lg) var(--spacing-xl);
     box-sizing: border-box;
 }
 
-.showcaseTitle {
-    color: #FFFFFF;
-    font-size: 28px;
+/* Background ambient light effect */
+.container::before {
+    content: '';
+    position: absolute;
+    width: 75vw;
+    height: 75vw;
+    top: -25%;
+    left: -20%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+/* Top Navigation Back Button */
+.backButton {
+    position: fixed;
+    top: 24px;
+    left: 24px;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-full);
+    color: #1a1a2e;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: 100;
+    transition: all var(--transition-fast);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+}
+
+.backButton:hover {
+    background: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Top Header */
+.header {
+    text-align: center;
+    z-index: 10;
+    margin-top: var(--spacing-sm);
+}
+
+.header h2 {
+    color: #ffffff;
+    font-size: var(--font-size-2xl);
     font-weight: 900;
     letter-spacing: 0.5px;
+    text-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    margin-bottom: 4px;
 }
 
-.closeButton {
-    background: rgba(255,255,255,0.12);
-    border: none;
-    color: #FFFFFF;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    font-size: 22px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.header p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: var(--font-size-md);
+    font-weight: 600;
 }
 
-.closeButton:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
-.closeButton:active { transform: scale(0.9); }
-
-.mediaWrapper {
+/* ── 3D Infinite Circular Sliding Carousel Workspace ── */
+.carouselWorkspace {
+    flex: 1;
     width: 100%;
-    height: 80vh;
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    perspective: 1200px;
+    z-index: 10;
+    overflow: visible;
 }
 
-.showcaseMedia {
+.carouselCenterTrack {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+/* Individual Slide Card Container */
+.slideCardWrapper {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(16px);
+    border-radius: var(--radius-2xl);
+    padding: 16px;
+    box-sizing: border-box;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    transition: box-shadow var(--transition-normal);
+    border: 3px solid transparent;
+}
+
+.centerCard {
+    border-color: #3b82f6;
+    box-shadow: 0 20px 60px rgba(59, 130, 246, 0.45), 0 0 24px rgba(59, 130, 246, 0.3);
+}
+
+/* Header Title above each item */
+.cardItemHeader {
+    width: 100%;
+    text-align: center;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.cardItemTitle {
+    color: #ffffff;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+/* Card Media Content Body */
+.cardMediaBody {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    background: #0f172a;
+    position: relative;
+}
+
+.mediaContentImage {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    border-radius: var(--radius-xl);
-    box-shadow: var(--clay-shadow-xl);
+    border-radius: var(--radius-md);
 }
 
-/* Yellow Next Button */
-.nextButton {
-    position: absolute;
-    bottom: 40px;
-    right: 40px;
-    padding: var(--spacing-lg) var(--spacing-2xl);
-    background: var(--clay-yellow);
-    color: #1A1A2E;
-    border: none;
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-xl);
-    font-weight: 900;
-    cursor: pointer;
-    transition: all var(--transition-bouncy);
+/* Loading media state inside card */
+.loadingMedia {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.mediaSpinner {
+    width: 36px;
+    height: 36px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ── Bottom Floating Action Bar (Buttons 1, 2, 3) ── */
+.bottomActionBar {
+    position: relative;
     z-index: 30;
     display: flex;
     align-items: center;
-    gap: 10px;
-    box-shadow: var(--clay-shadow-yellow);
+    gap: var(--spacing-lg);
+    padding: 12px 28px;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+    margin-bottom: var(--spacing-sm);
 }
 
-.nextButton:hover { transform: translateY(-6px) scale(1.04); }
-.nextButton:active { transform: scale(0.92) translateY(4px); box-shadow: var(--clay-shadow-sm); }
+.actionBtn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 22px;
+    border-radius: var(--radius-full);
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-bouncy);
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+}
 
-/* Loading Overlay */
+.actionBtn:hover:not(:disabled) {
+    transform: translateY(-4px) scale(1.04);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.actionBtn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.actionBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Circular Number Badge */
+.btnNumber {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 900;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.btnLabelGroup {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+}
+
+.btnLabel {
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.btnSublabel {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+/* Distinctive button color styles */
+.btnBack {
+    background: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.btnBack .btnNumber {
+    background: #ef4444;
+    color: #ffffff;
+}
+
+.btnNextMedia {
+    background: rgba(59, 130, 246, 0.22);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+}
+.btnNextMedia .btnNumber {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.btnProceed {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border: 1px solid rgba(16, 185, 129, 0.6);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
+}
+.btnProceed .btnNumber {
+    background: #ffffff;
+    color: #059669;
+}
+
+/* Loading & Error Overlays */
 .loadingOverlay {
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
+    inset: 0;
     background: rgba(255, 255, 255, 0.96);
     display: flex;
     flex-direction: column;
@@ -213,10 +298,9 @@
 }
 
 .loadingOverlay p {
-    color: #1A1A2E;
+    color: #1a1a2e;
     font-size: var(--font-size-xl);
     font-weight: 900;
-    letter-spacing: 0.5px;
     margin-bottom: 8px;
 }
 
@@ -226,17 +310,11 @@
     font-weight: 500 !important;
 }
 
-.statusSubtext {
-    color: rgba(255,255,255,0.8);
-    font-size: 16px !important;
-    font-weight: 500 !important;
-}
-
 .errorMessage {
     position: absolute;
     top: 40px;
     background: var(--clay-coral);
-    color: #FFFFFF;
+    color: #ffffff;
     padding: var(--spacing-md) var(--spacing-xl);
     border-radius: var(--radius-full);
     z-index: 100;
@@ -244,21 +322,9 @@
     box-shadow: var(--clay-shadow-coral);
 }
 
-.readyMessage {
-    position: absolute;
-    top: 40px;
-    background: rgba(255, 255, 255, 0.92);
-    color: #1A1A2E;
-    padding: var(--spacing-md) var(--spacing-xl);
-    border-radius: var(--radius-full);
-    z-index: 100;
-    font-weight: 700;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
-    max-width: 90%;
-    text-align: center;
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
-
-@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── PORTRAIT MODE OVERRIDES ── */
 :global(body.app-portrait) .container {
@@ -267,61 +333,26 @@
     height: 100vh !important;
 }
 
-:global(body.app-portrait) .buttonsContainer {
-    flex-direction: column !important;
-    gap: 20px !important;
-    width: 100% !important;
-    align-items: center !important;
-    padding: 0 24px !important;
+:global(body.app-portrait) .bottomActionBar {
+    padding: 8px 16px !important;
+    gap: var(--spacing-md) !important;
 }
 
-:global(body.app-portrait) .mediaButton {
-    width: 85% !important;
-    height: 120px !important;
-    flex-direction: row !important;
-    gap: 24px !important;
-    padding: 0 28px !important;
+:global(body.app-portrait) .actionBtn {
+    padding: 8px 14px !important;
+    gap: 8px !important;
 }
 
-:global(body.app-portrait) .buttonIcon {
-    width: 70px !important;
-    height: 70px !important;
-    margin-bottom: 0 !important;
-}
-
-:global(body.app-portrait) .buttonText {
-    font-size: 20px !important;
-}
-
-:global(body.app-portrait) .showcaseContainer {
-    padding: 24px !important;
-}
-
-:global(body.app-portrait) .showcaseHeader {
-    top: 20px !important;
-    padding: 0 24px !important;
-}
-
-:global(body.app-portrait) .showcaseTitle {
-    font-size: 22px !important;
-}
-
-:global(body.app-portrait) .mediaWrapper {
-    height: 70vh !important;
-}
-
-:global(body.app-portrait) .nextButton {
-    right: 24px !important;
-    bottom: 24px !important;
-    padding: var(--spacing-md) var(--spacing-xl) !important;
-    font-size: 18px !important;
-}
-
-:global(body.app-portrait) .viewedCheck {
-    top: 10px !important;
-    right: 10px !important;
+:global(body.app-portrait) .btnNumber {
     width: 28px !important;
     height: 28px !important;
+    font-size: 14px !important;
 }
 
+:global(body.app-portrait) .btnLabel {
+    font-size: 13px !important;
+}
 
+:global(body.app-portrait) .btnSublabel {
+    font-size: 10px !important;
+}

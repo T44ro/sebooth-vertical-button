@@ -76,7 +76,7 @@
 /* Individual Frame Card in Slider */
 .carouselCard {
     position: absolute;
-    width: 280px;
+    width: 350px;
     background: #FFFFFF;
     border-radius: var(--radius-2xl);
     box-shadow: var(--clay-shadow-lg);
@@ -124,7 +124,7 @@
 
 .slotNumber {
     color: white;
-    font-size: var(--font-size-xl);
+    font-size: var(--font-size-2xl);
     font-weight: 900;
     text-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
@@ -263,7 +263,7 @@
 
 /* PORTRAIT MODE SPECIFICS */
 :global(body.app-portrait) .carouselCard {
-    width: 250px;
+    width: 300px;
 }
 
 :global(body.app-portrait) .navArrowLeft { left: 16px; }

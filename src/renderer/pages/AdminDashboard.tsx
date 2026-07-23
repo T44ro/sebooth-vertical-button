@@ -1508,6 +1508,24 @@ function AdminDashboard(): JSX.Element {
                                 </div>
                             </div>
 
+                            <div className={styles.timerCard} style={{ gridColumn: '1 / -1' }}>
+                                <h3>⏩ Skip View Requirement (Output Page)</h3>
+                                <p>Aktifkan agar pengunjung tidak perlu membuka/melihat hasil foto satu per satu (Strip, GIF, Live Photo) sebelum dapat mengklik tombol Lanjutkan.</p>
+                                <div className={styles.timerToggle}>
+                                    <label className={styles.toggleSwitch}>
+                                        <input
+                                            type="checkbox"
+                                            checked={config.skipViewRequirement || false}
+                                            onChange={(e) => updateConfig({ skipViewRequirement: e.target.checked })}
+                                        />
+                                        <span className={styles.toggleSlider}></span>
+                                    </label>
+                                    <span className={styles.toggleLabel}>
+                                        {config.skipViewRequirement ? 'Skip Requirement (Langsung Bisa Lanjut)' : 'Mewajibkan Lihat 1 per 1 Hasil'}
+                                    </span>
+                                </div>
+                            </div>
+
                             <div className={styles.timerCard}>
                                 <h3>🎚️ Enable Countdown Timer</h3>
                                 <p>Toggle the countdown timer during photo capture sessions</p>

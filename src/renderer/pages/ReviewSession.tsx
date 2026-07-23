@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useSessionStore, useFrameStore, useAppConfig } from '../stores'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
 import styles from './ReviewSession.module.css'
@@ -16,14 +16,19 @@ const FILTERS: { id: FilterType; name: string; style: React.CSSProperties; filte
     { id: 'vintage', name: 'Vintage', style: { filter: 'contrast(1.1) brightness(0.9) sepia(30%)' }, filterStr: 'contrast(1.1) brightness(0.9) sepia(30%)' }
 ]
 
+// Helper function to calculate circular offset relative to active index
+const getCircularOffset = (index: number, activeIndex: number, length: number): number => {
+    let diff = index - activeIndex
+    while (diff > length / 2) diff -= length
+    while (diff <= -length / 2) diff += length
+    return diff
+}
+
 const ReviewSession: React.FC = () => {
     const navigate = useNavigate()
     const { 
         currentSession, 
         photos, 
-        updatePhoto, 
-        swapPhotos, 
-        removePhoto,
         selectedFilter,
         setSessionFilter,
         endSession,
@@ -33,158 +38,97 @@ const ReviewSession: React.FC = () => {
     const { frames } = useFrameStore()
     const { config } = useAppConfig()
     
-    const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
-    const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({})
-    const [isPreviewMode, setIsPreviewMode] = useState(false)
-    const [previewIndex, setPreviewIndex] = useState(0)
+    const [showOverlayText, setShowOverlayText] = useState(true)
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
-    const containerRef = useRef<HTMLDivElement>(null)
+    const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const carouselRef = useRef<HTMLDivElement>(null)
 
+    // Redirect to capture if session is missing
     useEffect(() => {
         if (!currentSession || photos.length === 0) {
             navigate('/capture')
         }
     }, [currentSession, photos, navigate])
 
+    // Sync mirror setting from global config on load if defined
     useEffect(() => {
         if (config && config.mirrorOutput !== undefined) {
             setIsMirrored(config.mirrorOutput)
         }
     }, [config, setIsMirrored])
 
-    if (!currentSession) return null
+    // Current active filter index
+    const activeIndex = FILTERS.findIndex(f => f.id === (selectedFilter || 'none'))
+    const safeActiveIndex = activeIndex === -1 ? 0 : activeIndex
+    const currentFilterDef = FILTERS[safeActiveIndex] || FILTERS[0]
 
-    const sessionFrame = frames.find(f => f.id === currentSession.frameId)
-    if (!sessionFrame) return null
-
-    const getScale = () => {
-        if (!containerRef.current) return 1
-        // Workspace now fills available space, account for padding
-        const padding = 80 // padding from .workspace
-        const availableWidth = containerRef.current.clientWidth - padding
-        const availableHeight = containerRef.current.clientHeight - padding
-        const scaleX = availableWidth / sessionFrame.canvasWidth
-        const scaleY = availableHeight / sessionFrame.canvasHeight
-        return Math.min(scaleX, scaleY)
-    }
-
-    // Compute full transform including translation so scaled canvas stays centered
-    const getCanvasTransform = () => {
-        const scale = getScale()
-        if (!containerRef.current) return { transform: `scale(${scale})`, transformOrigin: 'center center' }
-        const cw = containerRef.current.clientWidth
-        const ch = containerRef.current.clientHeight
-
-        const scaledW = sessionFrame.canvasWidth * scale
-        const scaledH = sessionFrame.canvasHeight * scale
-
-        const translateX = Math.round((cw - scaledW) / 2)
-        const translateY = Math.round((ch - scaledH) / 2)
-
-        // translate first, then scale. Use top-left origin so slot left/top coordinates map as-is
-        return {
-            transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
-            transformOrigin: 'top left'
-        }
-    }
-
-
-
-    const handleRetake = () => {
-        if (!selectedSlotId) return
-        const selectedSlot = sessionFrame.slots.find(s => s.id === selectedSlotId)
-        const sourceSlotId = selectedSlot?.duplicateOfSlotId || selectedSlotId
-        removePhoto(sourceSlotId)
-        navigate('/capture')
-    }
-
-    const handleSwipe = (direction: 'left' | 'right') => {
-        const filledSlots = sessionFrame.slots.filter(slot => {
-            const sourceSlotId = slot.duplicateOfSlotId || slot.id
-            return photos.some(p => p.slotId === sourceSlotId)
-        })
-        
-        if (direction === 'left' && previewIndex < filledSlots.length - 1) {
-            setPreviewIndex(previewIndex + 1)
-        } else if (direction === 'right' && previewIndex > 0) {
-            setPreviewIndex(previewIndex - 1)
-        }
-    }
-
-    const handlePreviewRetake = () => {
-        const filledSlots = sessionFrame.slots.filter(slot => {
-            const sourceSlotId = slot.duplicateOfSlotId || slot.id
-            return photos.some(p => p.slotId === sourceSlotId)
-        })
-        const currentSlot = filledSlots[previewIndex]
-        if (currentSlot) {
-            const sourceSlotId = currentSlot.duplicateOfSlotId || currentSlot.id
-            removePhoto(sourceSlotId)
-            navigate('/capture')
-        }
-    }
-
-    // Auto select first slot
+    // Handle 2-second fade-out timer for overlay text when filter changes
     useEffect(() => {
-        if (!selectedSlotId && sessionFrame.slots.length > 0) {
-            const firstFilledSlot = sessionFrame.slots.find(slot => {
-                const sourceSlotId = slot.duplicateOfSlotId || slot.id
-                return photos.some(p => p.slotId === sourceSlotId)
-            })
-            setSelectedSlotId(firstFilledSlot?.id || sessionFrame.slots[0].id)
+        setShowOverlayText(true)
+        if (fadeTimeoutRef.current) {
+            clearTimeout(fadeTimeoutRef.current)
         }
-    }, [selectedSlotId, sessionFrame, photos])
+        fadeTimeoutRef.current = setTimeout(() => {
+            setShowOverlayText(false)
+        }, 2000)
 
-    // Reset preview index when entering preview mode
-    useEffect(() => {
-        if (isPreviewMode) {
-            setPreviewIndex(0)
+        return () => {
+            if (fadeTimeoutRef.current) {
+                clearTimeout(fadeTimeoutRef.current)
+            }
         }
-    }, [isPreviewMode])
+    }, [selectedFilter])
 
-    // Keyboard navigation
+    const handleNextFilter = useCallback(() => {
+        const nextIndex = (safeActiveIndex + 1) % FILTERS.length
+        setSessionFilter(FILTERS[nextIndex].id)
+    }, [safeActiveIndex, setSessionFilter])
+
+    const handleToggleMirror = useCallback(() => {
+        setIsMirrored(!isMirrored)
+    }, [isMirrored, setIsMirrored])
+
+    const handleNextStep = useCallback(() => {
+        navigate('/output')
+    }, [navigate])
+
+    // Keyboard navigation according to exact specifications:
+    // Key 1: Next filter
+    // Key 2: Toggle Mirror output
+    // Key 3: Next step (/output)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
             if (e.key === '1') {
                 e.preventDefault()
-                // Cycle filters
-                const currentIndex = FILTERS.findIndex(f => f.id === selectedFilter)
-                const nextIndex = (currentIndex + 1) % FILTERS.length
-                setSessionFilter(FILTERS[nextIndex].id)
+                handleNextFilter()
             } else if (e.key === '2') {
                 e.preventDefault()
-                navigate('/output')
+                handleToggleMirror()
             } else if (e.key === '3') {
                 e.preventDefault()
-                setIsMirrored(!isMirrored)
+                handleNextStep()
             }
         }
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [selectedFilter, setSessionFilter, isMirrored, setIsMirrored, navigate])
+    }, [handleNextFilter, handleToggleMirror, handleNextStep])
 
+    if (!currentSession) return null
 
+    const sessionFrame = frames.find(f => f.id === currentSession.frameId)
+    if (!sessionFrame) return null
 
-    // Retrieve current filter style
-    const currentFilterDef = FILTERS.find(f => f.id === selectedFilter);
-    const filterStyle = currentFilterDef ? currentFilterDef.style : {};
+    // Calculate card dimensions for rendering (Enlarged frame size)
+    const isPortrait = config.appOrientation === 'portrait'
+    const targetCardHeight = isPortrait ? 520 : 600
+    const cardScaleFactor = targetCardHeight / sessionFrame.canvasHeight
+    const scaledWidth = sessionFrame.canvasWidth * cardScaleFactor
+    const scaledHeight = sessionFrame.canvasHeight * cardScaleFactor
 
-    const selectedPhoto = selectedSlotId 
-        ? (() => {
-            const selectedSlot = sessionFrame.slots.find(s => s.id === selectedSlotId)
-            const sourceSlotId = selectedSlot?.duplicateOfSlotId || selectedSlotId
-            return photos.find(p => p.slotId === sourceSlotId)
-        })()
-        : (() => {
-            const firstFilledSlot = sessionFrame.slots.find(slot => {
-                const sourceSlotId = slot.duplicateOfSlotId || slot.id
-                return photos.some(p => p.slotId === sourceSlotId)
-            })
-            const sourceSlotId = firstFilledSlot?.duplicateOfSlotId || firstFilledSlot?.id
-            return sourceSlotId ? photos.find(p => p.slotId === sourceSlotId) : photos[0]
-        })()
+    // Spacing between cards in carousel
+    const spacingX = isPortrait ? scaledWidth * 0.82 : scaledWidth * 1.05
 
     return (
         <motion.div 
@@ -193,210 +137,193 @@ const ReviewSession: React.FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
         >
+            {/* Top Navigation Back Button */}
             <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={() => setIsConfirmModalOpen(true)}
                 title="Back to Home"
-                style={{
-                    position: 'fixed',
-                    top: '20px',
-                    left: '20px',
-                    padding: '6px 12px',
-                    backgroundColor: '#f8f9fa',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '5px',
-                    cursor: 'pointer',
-                    fontSize: '10px',
-                    zIndex: 100
-                }}
+                className={styles.backButton}
             >
                 ← Kembali
             </motion.button>
-            {!isPreviewMode ? (
-                <div className={styles.mainLayout}>
-                    {/* Main Workspace - Takes most of the space */}
-                    <div className={styles.workspace} ref={containerRef}>
-                                        <div
-                                            className={styles.canvasContainer}
-                                            style={{
-                                                width: sessionFrame.canvasWidth,
-                                                height: sessionFrame.canvasHeight,
-                                                transform: `scale(${getScale()})`,
-                                                transformOrigin: 'center center'
-                                            }}
-                                        >
-                            {sessionFrame.slots.map(slot => {
-                                const sourceSlotId = slot.duplicateOfSlotId || slot.id
-                                const photo = photos.find(p => p.slotId === sourceSlotId)
-                                if (!photo) return null
 
-                                const isSelected = selectedSlotId === slot.id
-                                const motionKey = `${slot.id}-${photo.imagePath}`;
+            {/* Header Title */}
+            <div className={styles.header}>
+                <h2>🎨 Pilih Filter Foto</h2>
+                <p>Gunakan Filter Terbaik untuk Sesi Foto Anda</p>
+            </div>
 
-                                return (
-                                    <div
-                                        key={slot.id}
-                                        className={styles.slotWrapper}
-                                        style={{
-                                            left: slot.x,
-                                            top: slot.y,
-                                            width: slot.width,
-                                            height: slot.height,
-                                            transform: `rotate(${slot.rotation}deg)`,
-                                            transformOrigin: 'center center',
-                                            overflow: 'hidden'
-                                        }}
-                                        data-slot-id={slot.id} // crucial for target identification
-                                        onPointerDown={() => setSelectedSlotId(slot.id)}
-                                    >
-                                        <img
-                                            key={motionKey}
-                                            src={photo.imagePath}
-                                            className={styles.photoImage}
-                                            draggable={false}
-                                            style={{
-                                                width: '100%',
-                                                height: '100%',
-                                                objectFit: 'cover',
-                                                transform: `scale(${photo.scale || 1}) scaleX(${isMirrored ? -1 : 1})`,
-                                                transformOrigin: 'center center',
-                                                ...filterStyle
-                                            }}
-                                        />
-                                    </div>
-                                )
-                            })}
+            {/* Main 3D Infinite Circular Sliding Carousel Area */}
+            <div className={styles.carouselWorkspace} ref={carouselRef}>
+                <div className={styles.carouselCenterTrack}>
+                    {FILTERS.map((filter, idx) => {
+                        const offset = getCircularOffset(idx, safeActiveIndex, FILTERS.length)
+                        const isCenter = offset === 0
+                        const absOffset = Math.abs(offset)
 
-                            <img
-                                src={`file:///${sessionFrame.overlayPath.replace(/\\/g, '/')}`}
-                                className={styles.frameOverlay}
-                                alt="Frame Override"
-                            />
-                        </div>
-                    </div>
+                        // Compute 3D slide transforms
+                        let xPos = offset * spacingX
+                        let scale = 1.20
+                        let opacity = 1
+                        let zIndex = 20
+                        let rotateY = 0
 
-                    {/* Right Sidebar with all controls */}
-                    <div className={styles.rightSidebar}>
-                        <div className={styles.controlsSection}>
-                            <div className={styles.filterTabs}>
+                        if (!isCenter) {
+                            scale = absOffset === 1 ? 0.70 : 0.45
+                            opacity = absOffset === 1 ? 0.50 : 0.12
+                            zIndex = 10 - absOffset
+                            rotateY = offset > 0 ? -12 : 12
+                        }
 
+                        return (
+                            <motion.div
+                                key={filter.id}
+                                className={`${styles.slideCardWrapper} ${isCenter ? styles.centerCard : ''}`}
+                                style={{
+                                    width: scaledWidth,
+                                    height: scaledHeight,
+                                    zIndex
+                                }}
+                                animate={{
+                                    x: xPos,
+                                    scale,
+                                    opacity,
+                                    rotateY
+                                }}
+                                transition={{
+                                    type: 'spring',
+                                    stiffness: 280,
+                                    damping: 26,
+                                    mass: 0.8
+                                }}
+                                onClick={() => {
+                                    if (!isCenter) {
+                                        setSessionFilter(filter.id)
+                                    }
+                                }}
+                            >
+                                {/* Inner Canvas Container representing the completed photo strip */}
+                                <div
+                                    className={styles.innerCanvas}
+                                    style={{
+                                        width: sessionFrame.canvasWidth,
+                                        height: sessionFrame.canvasHeight,
+                                        transform: `scale(${cardScaleFactor})`,
+                                        transformOrigin: 'top left'
+                                    }}
+                                >
+                                    {sessionFrame.slots.map(slot => {
+                                        const sourceSlotId = slot.duplicateOfSlotId || slot.id
+                                        const photo = photos.find(p => p.slotId === sourceSlotId)
+                                        if (!photo) return null
 
-                                {FILTERS.map(filter => (
-                                    <button
-                                        key={filter.id}
-                                        className={`${styles.filterBtn} ${selectedFilter === filter.id ? styles.active : ''}`}
-                                        onClick={() => setSessionFilter(filter.id)}
-                                    >
-                                        <div className={styles.filterPreview} style={filter.style}>
-                                            {selectedPhoto && <img src={selectedPhoto.imagePath} alt={filter.name} />}
-                                        </div>
-                                        <span>{filter.name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                            <div className={styles.mirrorGroup}>
-                                <span>Mirror Output</span>
-                                <label className={styles.toggleSwitch}>
-                                    <input
-                                        type="checkbox"
-                                        checked={isMirrored}
-                                        onChange={(e) => setIsMirrored(e.target.checked)}
+                                        return (
+                                            <div
+                                                key={slot.id}
+                                                className={styles.slotWrapper}
+                                                style={{
+                                                    left: slot.x,
+                                                    top: slot.y,
+                                                    width: slot.width,
+                                                    height: slot.height,
+                                                    transform: `rotate(${slot.rotation}deg)`,
+                                                    transformOrigin: 'center center',
+                                                    overflow: 'hidden'
+                                                }}
+                                            >
+                                                <img
+                                                    src={photo.imagePath}
+                                                    className={styles.photoImage}
+                                                    draggable={false}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        objectFit: 'cover',
+                                                        transform: `scale(${photo.scale || 1}) scaleX(${isMirrored ? -1 : 1})`,
+                                                        transformOrigin: 'center center',
+                                                        ...filter.style
+                                                    }}
+                                                    alt={`Slot ${slot.id}`}
+                                                />
+                                            </div>
+                                        )
+                                    })}
+
+                                    {/* Frame Overlay Image */}
+                                    <img
+                                        src={`file:///${sessionFrame.overlayPath.replace(/\\/g, '/')}`}
+                                        className={styles.frameOverlay}
+                                        alt="Frame Overlay"
                                     />
-                                    <span className={styles.toggleSlider}></span>
-                                </label>
-                            </div>
-
-                            <button className={styles.nextBtn} onClick={() => navigate('/output')}>
-                                Next Step ➔
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className={styles.previewContainer}>
-                    <div className={styles.previewPhotoContainer}>
-                        {(() => {
-                            const filledSlots = sessionFrame.slots.filter(slot => {
-                                const sourceSlotId = slot.duplicateOfSlotId || slot.id
-                                return photos.some(p => p.slotId === sourceSlotId)
-                            })
-                            const currentSlot = filledSlots[previewIndex]
-                            const sourceSlotId = currentSlot?.duplicateOfSlotId || currentSlot?.id
-                            const photo = sourceSlotId ? photos.find(p => p.slotId === sourceSlotId) : null
-                            
-                            return photo ? (
-                                <div className={styles.previewPhotoWrapper}>
-                                    <motion.div 
-                                        className={styles.previewPhoto}
-                                        drag="x"
-                                        dragConstraints={{ left: 0, right: 0 }}
-                                        dragElastic={0.2}
-                                        onDragEnd={(event, info) => {
-                                            const threshold = 50;
-                                            if (info.offset.x > threshold) {
-                                                handleSwipe('right');
-                                            } else if (info.offset.x < -threshold) {
-                                                handleSwipe('left')
-                                            }
-                                        }}
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.8 }}
-                                        transition={{ duration: 0.3 }}
-                                    >
-                                        <img 
-                                            src={photo.imagePath} 
-                                            alt={`Photo ${previewIndex + 1}`}
-                                            style={{
-                                                ...filterStyle,
-                                                transform: `scaleX(${isMirrored ? -1 : 1})`
-                                            }}
-                                        />
-                                    </motion.div>
-                                    
-                                    {/* Navigation buttons below the image */}
-                                    <div className={styles.navigationButtons}>
-                                        <button 
-                                            className={styles.navBtn} 
-                                            onClick={() => handleSwipe('right')}
-                                            disabled={previewIndex === 0}
-                                        >
-                                            ‹
-                                        </button>
-                                        <div className={styles.photoIndicator}>
-                                            {previewIndex + 1} / {filledSlots.length}
-                                        </div>
-                                        <button 
-                                            className={styles.navBtn} 
-                                            onClick={() => handleSwipe('left')}
-                                            disabled={previewIndex === filledSlots.length - 1}
-                                        >
-                                            ›
-                                        </button>
-                                    </div>
                                 </div>
-                            ) : null
-                        })()}
-                    </div>
-                    
-                    <div className={styles.previewControls}>
-                        <button 
-                            className={styles.retakeBtn}
-                            onClick={handlePreviewRetake}
-                        >
-                            📸 Retake This Photo
-                        </button>
-                        <button 
-                            className={styles.continueBtn}
-                            onClick={() => setIsPreviewMode(false)}
-                        >
-                            Continue to Edit
-                        </button>
-                    </div>
-                </div>
-            )}
 
+                                {/* Plain White Text Overlay in Center of Active Frame that Fades In and Out after 2 Seconds */}
+                                {isCenter && (
+                                    <AnimatePresence>
+                                        {showOverlayText && (
+                                            <motion.div
+                                                key={filter.id}
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                transition={{ duration: 0.45, ease: 'easeInOut' }}
+                                                className={styles.filterOverlayBadge}
+                                            >
+                                                {filter.name}
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                )}
+                            </motion.div>
+                        )
+                    })}
+                </div>
+            </div>
+
+            {/* Bottom Floating Control Bar with Dedicated 1, 2, 3 Actions */}
+            <div className={styles.bottomActionBar}>
+                {/* Button 1: Next Filter */}
+                <button 
+                    className={`${styles.actionBtn} ${styles.btnFilter}`}
+                    onClick={handleNextFilter}
+                    title="Tekan 1 untuk melihat filter selanjutnya"
+                >
+                    <span className={styles.btnNumber}>1</span>
+                    <div className={styles.btnLabelGroup}>
+                        <span className={styles.btnLabel}>Filter Selanjutnya</span>
+                        <span className={styles.btnSublabel}>{currentFilterDef.name} ➔</span>
+                    </div>
+                </button>
+
+                {/* Button 2: Toggle Mirror Output */}
+                <button 
+                    className={`${styles.actionBtn} ${styles.btnMirror} ${isMirrored ? styles.mirrorActive : ''}`}
+                    onClick={handleToggleMirror}
+                    title="Tekan 2 untuk memilih mode Mirror Output"
+                >
+                    <span className={styles.btnNumber}>2</span>
+                    <div className={styles.btnLabelGroup}>
+                        <span className={styles.btnLabel}>Mirror Output</span>
+                        <span className={styles.btnSublabel}>{isMirrored ? '🪞 Aktif (ON)' : '📷 Normal (OFF)'}</span>
+                    </div>
+                </button>
+
+                {/* Button 3: Next Step to Output Page */}
+                <button 
+                    className={`${styles.actionBtn} ${styles.btnNext}`}
+                    onClick={handleNextStep}
+                    title="Tekan 3 untuk lanjut ke halaman berikutnya"
+                >
+                    <span className={styles.btnNumber}>3</span>
+                    <div className={styles.btnLabelGroup}>
+                        <span className={styles.btnLabel}>Lanjutkan</span>
+                        <span className={styles.btnSublabel}>Ke Output ➔</span>
+                    </div>
+                </button>
+            </div>
+
+            {/* Confirm Back Home Modal */}
             <ConfirmBackHomeModal
                 isOpen={isConfirmModalOpen}
                 onClose={() => setIsConfirmModalOpen(false)}
@@ -409,5 +336,5 @@ const ReviewSession: React.FC = () => {
     )
 }
 
-
 export default ReviewSession
+

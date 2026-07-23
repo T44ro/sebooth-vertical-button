@@ -132,6 +132,7 @@ export function LiveLayoutToolbar(): JSX.Element | null {
         { path: '/capture', key: 'capture', label: '📸 Capture' },
         { path: '/photo-review', key: 'photo-review', label: '📷 Photo Review' },
         { path: '/review', key: 'review', label: '🎨 Filter Review' },
+        { path: '/output', key: 'output', label: '🎞️ Output' },
         { path: '/sharing', key: 'sharing', label: '📲 Sharing' },
         { path: '/printing', key: 'printing', label: '🖨️ Printing' }
     ]

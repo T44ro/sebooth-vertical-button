@@ -410,8 +410,9 @@ export const useFrameStore = create<FrameState>()(
 interface SessionState {
     currentSession: SessionData | null
     photos: CapturedPhoto[]
-    startSession: (frameId: string) => void
+    startSession: (frameId: string, printQuantity?: number) => void
     endSession: () => void
+    setPrintQuantity: (quantity: number) => void
     addPhoto: (slotId: string, imagePath: string, videoPath?: string) => void
     updatePhoto: (slotId: string, updates: Partial<CapturedPhoto>) => void
     removePhoto: (slotId: string) => void
@@ -430,15 +431,22 @@ export const useSessionStore = create<SessionState>((set) => ({
     currentSession: null,
     photos: [],
 
-    startSession: (frameId) => set({
+    startSession: (frameId, printQuantity) => set({
         currentSession: {
             id: uuidv4(),
             frameId,
             photos: [],
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            printQuantity: printQuantity || 2
         },
         photos: []
     }),
+
+    setPrintQuantity: (quantity) => set((state) => ({
+        currentSession: state.currentSession
+            ? { ...state.currentSession, printQuantity: quantity }
+            : null
+    })),
 
     endSession: () => set({
         currentSession: null,

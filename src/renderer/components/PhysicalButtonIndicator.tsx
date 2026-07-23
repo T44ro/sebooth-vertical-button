@@ -22,6 +22,7 @@ export const getPageKeyFromRoute = (pathname: string, hash: string): string => {
     if (target.startsWith('/capture')) return 'capture'
     if (target.startsWith('/photo-review')) return 'photo-review'
     if (target.startsWith('/review')) return 'review'
+    if (target.startsWith('/output')) return 'output'
     if (target.startsWith('/sharing')) return 'sharing'
     if (target.startsWith('/printing')) return 'printing'
     return 'landing'

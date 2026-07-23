@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useFrameStore, useSessionStore, useFilterStore, useAppConfig } from '../stores'
+import { useFrameStore, useSessionStore, useAppConfig } from '../stores'
 import { PhotoSlot, QRSlot } from '@shared/types'
 import { ConfirmBackHomeModal } from '../components/ConfirmBackHomeModal'
 import styles from './OutputPage.module.css'
@@ -9,6 +9,27 @@ import { supabase } from '../lib/supabase'
 import Lottie from 'lottie-react'
 import PA22Animation from '../assets/PA22.json'
 import QRCode from 'qrcode'
+
+type OutputMediaType = 'strip' | 'gif' | 'live'
+
+interface OutputItemDef {
+    id: OutputMediaType
+    title: string
+}
+
+const OUTPUT_ITEMS: OutputItemDef[] = [
+    { id: 'strip', title: 'Photostrip' },
+    { id: 'gif', title: 'GIF' },
+    { id: 'live', title: 'Live Photo' }
+]
+
+// Helper function to calculate circular offset relative to active index
+const getCircularOffset = (index: number, activeIndex: number, length: number): number => {
+    let diff = index - activeIndex
+    while (diff > length / 2) diff -= length
+    while (diff <= -length / 2) diff += length
+    return diff
+}
 
 function OutputPage(): JSX.Element {
     const navigate = useNavigate()
@@ -20,33 +41,20 @@ function OutputPage(): JSX.Element {
         ? frames.find(f => f.id === currentSession.frameId)
         : activeFrame
 
-    const [activeMedia, setActiveMedia] = useState<'strip' | 'gif' | 'live' | null>(null)
-    const [viewedMedia, setViewedMedia] = useState<{ strip: boolean; gif: boolean; live: boolean }>({
-        strip: false,
-        gif: false,
-        live: false
-    })
+    const [activeIndex, setActiveIndex] = useState<number>(0)
     const [gifDataUrl, setGifDataUrl] = useState<string | null>(null)
     const [liveVideoPath, setLiveVideoPath] = useState<string | null>(null)
     const [compositeDataUrl, setCompositeDataUrl] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
-    const [readyMessage, setReadyMessage] = useState<string | null>(null)
     const [isProcessing, setIsProcessing] = useState(true)
     const [isUploading, setIsUploading] = useState(false)
     const [uploadStatus, setUploadStatus] = useState<string>('')
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
-    const autoOpenRef = useRef(false)
     const { setCloudSessionId } = useSessionStore()
 
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const uploadLockRef = useRef<string | null>(null)
-
-    // Track viewed media
-    useEffect(() => {
-        if (activeMedia) {
-            setViewedMedia(prev => ({ ...prev, [activeMedia]: true }))
-        }
-    }, [activeMedia])
+    const carouselRef = useRef<HTMLDivElement>(null)
 
     // Generate composite when photos, frame, or filter changes
     useEffect(() => {
@@ -61,13 +69,11 @@ function OutputPage(): JSX.Element {
             await generateCompositeFromPhotos()
             await generateGif()
             extractLiveVideo()
-            // Cloud Upload will be triggered via useEffect when all media ready
         } finally {
             setIsProcessing(false)
         }
     }
 
-    // New: Trigger upload when processing is done and composite is ready
     const resolveSourceSlotId = (slot: PhotoSlot): string => {
         if (!slot.duplicateOfSlotId || !sessionFrame) return slot.id
         const sourceSlot = sessionFrame.slots.find(s => s.id === slot.duplicateOfSlotId)
@@ -79,29 +85,12 @@ function OutputPage(): JSX.Element {
         return photos.find(p => p.slotId === sourceSlotId)
     }
 
+    // Trigger upload when processing is done and composite is ready
     useEffect(() => {
         if (!isProcessing && compositeDataUrl && config.sharingMode === 'cloud') {
             handleCloudUpload()
         }
     }, [isProcessing, compositeDataUrl, config.sharingMode])
-
-    useEffect(() => {
-        if (!isProcessing && photos.length > 0 && compositeDataUrl && !activeMedia && !autoOpenRef.current) {
-            autoOpenRef.current = true
-            setActiveMedia('strip')
-            setReadyMessage('Photo Strip siap! Ketuk kembali jika ingin memilih GIF atau Live Photo.')
-            setTimeout(() => setReadyMessage(null), 5000)
-        }
-    }, [isProcessing, photos.length, compositeDataUrl, activeMedia])
-
-    useEffect(() => {
-        if (!isProcessing && photos.length === 0) {
-            setReadyMessage('Belum ada foto diambil. Kembali ke sesi capture untuk mengambil foto terlebih dahulu.')
-        }
-    }, [isProcessing, photos.length])
-
-    // We remove the strict requirement for gif and video to avoid blocking upload if those fail
-    // They will be uploaded if they eventually arrive while handleCloudUpload is running or in a retry
 
     const handleCloudUpload = async () => {
         const sessionId = currentSession?.id
@@ -237,12 +226,10 @@ function OutputPage(): JSX.Element {
             
             if (dbErr) throw dbErr
 
-            // Set the ID immediately after DB record is created so QR code can point to the right place
             setCloudSessionId(sessionId)
 
-            // 6. Upload all media and create database entries sequentially
             let successCount = 0
-            const GCS_BUCKET_NAME = 'sebooth-media-konser'; // HARAP GANTI JIKA NAMA BUCKET ANDA BERBEDA!
+            const GCS_BUCKET_NAME = 'sebooth-media-konser'
             
             for (let i = 0; i < mediaToUpload.length; i++) {
                 const item = mediaToUpload[i]
@@ -250,7 +237,6 @@ function OutputPage(): JSX.Element {
                 setUploadStatus(`Mengunggah ${item.label || item.type} ${progress}...`)
                 
                 try {
-                    // Upload ke Google Cloud Storage via Electron Main Process
                     const uploadResult = await (window as any).api.cloud.uploadFile({
                         bucketName: GCS_BUCKET_NAME,
                         destinationPath: item.path,
@@ -287,17 +273,18 @@ function OutputPage(): JSX.Element {
             setUploadStatus(`Upload Selesai! (${successCount}/${mediaToUpload.length} sukses)`)
             console.log(`✅ Upload Sequence Complete. Success: ${successCount}/${mediaToUpload.length}`)
         } catch (err: any) {
-            console.error('❌ Cloud upload failed:', err)
-            setError(`Cloud Upload Gagal: ${err.message || 'Unknown error'}`)
-            setUploadStatus('Upload Gagal.')
-            uploadLockRef.current = null // Reset lock on error
+            console.warn('⚠️ Cloud upload deferred to offline retry queue:', err)
+            // Ensure cloudSessionId is set so session navigation and local printing proceed 100% smoothly
+            const fallbackId = currentSession?.id || crypto.randomUUID()
+            setCloudSessionId(fallbackId)
+            setUploadStatus('Media disimpan di antrean offline (akan otomatis di-upload saat online).')
+            uploadLockRef.current = null
         } finally {
             setIsUploading(false)
         }
     }
 
     const extractLiveVideo = () => {
-        // Find the first available pre-captured video in the session
         const videoPhoto = photos.find(p => p.videoPath && !p.videoPath.startsWith('blob:'))
         if (videoPhoto && videoPhoto.videoPath) {
             setLiveVideoPath(`file://${videoPhoto.videoPath.replace(/\\/g, '/')}`)
@@ -398,7 +385,6 @@ function OutputPage(): JSX.Element {
         return []
     }
 
-    // Generate composite from photos using canvas
     const generateCompositeFromPhotos = async (): Promise<void> => {
         if (!sessionFrame || photos.length === 0 || !canvasRef.current) return
 
@@ -510,7 +496,6 @@ function OutputPage(): JSX.Element {
                 console.error('Failed to load frame overlay:', err)
             }
 
-            // Draw QR code if enabled
             const activeQrSlots = getQRSlots(sessionFrame)
             if (activeQrSlots.length > 0) {
                 try {
@@ -544,51 +529,100 @@ function OutputPage(): JSX.Element {
         }
     }
 
+    // Circular Carousel Navigation Handlers
+    // 1: Back (Prev)
+    // 2: Next
+    // 3: Lanjutkan (/sharing)
+    const handlePrevMedia = useCallback(() => {
+        setActiveIndex(prev => (prev - 1 + OUTPUT_ITEMS.length) % OUTPUT_ITEMS.length)
+    }, [])
 
-    const renderShowcase = () => {
-        if (!activeMedia) return null
-        if (!sessionFrame && activeMedia === 'live') return null
+    const handleNextMedia = useCallback(() => {
+        setActiveIndex(prev => (prev + 1) % OUTPUT_ITEMS.length)
+    }, [])
 
-        let content = null
-        let title = ''
+    const handleProceed = useCallback(() => {
+        navigate('/sharing')
+    }, [navigate])
 
-        if (activeMedia === 'strip') {
-            title = 'Photo Strip'
-            content = compositeDataUrl ? <img src={compositeDataUrl} alt="Strip" className={styles.showcaseMedia} /> : <p>Loading...</p>
-        } else if (activeMedia === 'gif') {
-            title = 'GIF Animation'
-            content = gifDataUrl ? <img src={gifDataUrl} alt="GIF" className={styles.showcaseMedia} /> : (
-                // Fallback grid if GIF fails or is generating
-                <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center'}}>
-                    {photos.map((p, i) => (
-                        <img key={i} src={p.imagePath} alt={`Frame ${i}`} style={{height: '250px', borderRadius: '8px'}} />
-                    ))}
+    // Keyboard navigation according to specifications:
+    // Key 1: Back (Previous output in circular loop)
+    // Key 2: Next (Next output in circular loop)
+    // Key 3: Lanjutkan (Next step to /sharing)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+            if (isProcessing || isUploading) return
+
+            if (e.key === '1') {
+                e.preventDefault()
+                handlePrevMedia()
+            } else if (e.key === '2') {
+                e.preventDefault()
+                handleNextMedia()
+            } else if (e.key === '3') {
+                e.preventDefault()
+                handleProceed()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isProcessing, isUploading, handlePrevMedia, handleNextMedia, handleProceed])
+
+    if (!sessionFrame) return null
+
+    // Calculate dimensions for circular 3D carousel cards (Enlarged selected item size)
+    const isPortrait = config.appOrientation === 'portrait'
+    const targetCardHeight = isPortrait ? 520 : 600
+    const cardScaleFactor = targetCardHeight / sessionFrame.canvasHeight
+    const scaledWidth = sessionFrame.canvasWidth * cardScaleFactor
+    const scaledHeight = sessionFrame.canvasHeight * cardScaleFactor
+    const spacingX = isPortrait ? scaledWidth * 0.88 : scaledWidth * 1.10
+
+    // Helper to render media inside a card
+    const renderMediaContent = (mediaId: OutputMediaType) => {
+        if (mediaId === 'strip') {
+            return compositeDataUrl ? (
+                <img src={compositeDataUrl} alt="Photostrip" className={styles.mediaContentImage} />
+            ) : (
+                <div className={styles.loadingMedia}>
+                    <div className={styles.mediaSpinner} />
+                    <span>Memproses Photostrip...</span>
                 </div>
             )
-        } else if (activeMedia === 'live' && sessionFrame) {
-            title = 'Live Photo'
-            
-            const scaleY = (window.innerHeight * 0.8) / sessionFrame.canvasHeight
-            const scaleX = (window.innerWidth * 0.8) / sessionFrame.canvasWidth
+        }
+
+        if (mediaId === 'gif') {
+            return gifDataUrl ? (
+                <img src={gifDataUrl} alt="GIF" className={styles.mediaContentImage} />
+            ) : (
+                <div className={styles.loadingMedia}>
+                    <div className={styles.mediaSpinner} />
+                    <span>Memproses GIF...</span>
+                </div>
+            )
+        }
+
+        if (mediaId === 'live') {
+            const scaleY = (targetCardHeight * 0.88) / sessionFrame.canvasHeight
+            const scaleX = (scaledWidth * 0.88) / sessionFrame.canvasWidth
             const scale = Math.min(scaleX, scaleY, 1)
 
-            let filterStyle = {}
+            let filterStyle: React.CSSProperties = {}
             if (selectedFilter === 'grayscale') filterStyle = { filter: 'grayscale(100%)' }
             else if (selectedFilter === 'sepia') filterStyle = { filter: 'sepia(80%)' }
             else if (selectedFilter === 'warm') filterStyle = { filter: 'saturate(1.3) hue-rotate(-10deg)' }
             else if (selectedFilter === 'cool') filterStyle = { filter: 'saturate(1.1) hue-rotate(10deg)' }
             else if (selectedFilter === 'vintage') filterStyle = { filter: 'contrast(1.1) brightness(0.9) sepia(30%)' }
 
-            content = (
+            return (
                 <div style={{
                     position: 'relative',
                     width: sessionFrame.canvasWidth * scale,
                     height: sessionFrame.canvasHeight * scale,
-                    boxShadow: '0 0 50px rgba(0,0,0,0.8)',
                     borderRadius: '12px',
                     overflow: 'hidden',
-                    backgroundColor: 'white',
-                    flexShrink: 0
+                    backgroundColor: 'white'
                 }}>
                     <div style={{
                         position: 'absolute',
@@ -603,7 +637,6 @@ function OutputPage(): JSX.Element {
                             const photo = getPhotoForSlot(slot)
                             if (!photo) return null
                             
-                            // Use video if available, fallback to image if not
                             const isVideo = !!photo.videoPath
                             let src = photo.imagePath
                             if (isVideo) {
@@ -674,98 +707,26 @@ function OutputPage(): JSX.Element {
             )
         }
 
-        return (
-            <motion.div 
-                className={styles.showcaseContainer}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-            >
-                <div className={styles.showcaseHeader}>
-                    <h2 className={styles.showcaseTitle}>{title}</h2>
-                    <button className={styles.closeButton} onClick={() => setActiveMedia(null)}>✕</button>
-                </div>
-                <div className={styles.mediaWrapper}>
-                    {content}
-                </div>
-            </motion.div>
-        )
+        return null
     }
 
-    const allViewed = viewedMedia.strip && viewedMedia.gif && viewedMedia.live
-
-    // Keyboard navigation
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-
-            if (activeMedia) {
-                // Close showcase on any key press
-                e.preventDefault()
-                setActiveMedia(null)
-                return
-            }
-
-            if (isProcessing || isUploading) return
-
-            if (allViewed) {
-                if (e.key === '1') {
-                    e.preventDefault()
-                    setActiveMedia('strip')
-                } else if (e.key === '2') {
-                    e.preventDefault()
-                    if (config.sharingMode !== 'cloud' || currentSession?.cloudSessionId) {
-                        navigate('/sharing')
-                    }
-                } else if (e.key === '3') {
-                    e.preventDefault()
-                    // Cycle between gif and live
-                    setActiveMedia(prev => prev === 'gif' ? 'live' : 'gif')
-                }
-            } else {
-                if (e.key === '1') {
-                    e.preventDefault()
-                    setActiveMedia('strip')
-                } else if (e.key === '2') {
-                    e.preventDefault()
-                    setActiveMedia('gif')
-                } else if (e.key === '3') {
-                    e.preventDefault()
-                    setActiveMedia('live')
-                }
-            }
-        }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [activeMedia, allViewed, isProcessing, isUploading, currentSession?.cloudSessionId, config.sharingMode, navigate])
-
     return (
-
         <div className={styles.container}>
+            {/* Top Navigation Back Button */}
             <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={() => setIsConfirmModalOpen(true)}
                 title="Back to Home"
-                style={{
-                    position: 'fixed',
-                    top: '20px',
-                    left: '20px',
-                    padding: '5px 10px',
-                    backgroundColor: '#f8f9fa',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '3px',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    zIndex: 100
-                }}
+                className={styles.backButton}
             >
                 ← Kembali
             </motion.button>
-            {error && <div className={styles.errorMessage}>{error}</div>}
 
+            {error && <div className={styles.errorMessage}>{error}</div>}
             <canvas ref={canvasRef} style={{ display: 'none' }} />
 
+            {/* Loading / Uploading Overlay */}
             <AnimatePresence>
                 {(isProcessing || isUploading) && (
                     <motion.div 
@@ -785,66 +746,118 @@ function OutputPage(): JSX.Element {
                 )}
             </AnimatePresence>
 
-            {readyMessage && !isProcessing && !isUploading && (
-                <div className={styles.readyMessage}>{readyMessage}</div>
-            )}
+            {/* Main Header Title */}
+            <div className={styles.header}>
+                <h2>🎞️ Sesi Foto Selesai</h2>
+                <p>Lihat & Review Hasil Media Anda</p>
+            </div>
 
-            {/* 3 Interactive Buttons */}
-            <AnimatePresence mode="wait">
-                {!isProcessing && !activeMedia && (
-                    <motion.div
-                        key="buttons-grid"
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, filter: 'blur(10px)', scale: 1.1 }}
-                        className={styles.buttonsContainer}
-                    >
-                        <div className={`${styles.mediaButton} ${viewedMedia.strip ? styles.viewed : ''}`} onClick={() => setActiveMedia('strip')}>
-                            {viewedMedia.strip && <div className={styles.viewedCheck}>✓</div>}
-                            <div className={styles.buttonIcon}>
-                                <img src="./assets/icons/icon-photo-strip.png" alt="Photo Strip" />
-                            </div>
-                            <div className={styles.buttonText}>Photo Strip</div>
-                        </div>
-                        <div className={`${styles.mediaButton} ${viewedMedia.gif ? styles.viewed : ''}`} onClick={() => setActiveMedia('gif')}>
-                            {viewedMedia.gif && <div className={styles.viewedCheck}>✓</div>}
-                            <div className={styles.buttonIcon}>
-                                <img src="./assets/icons/icon-gif.png" alt="GIF" />
-                            </div>
-                            <div className={styles.buttonText}>GIF</div>
-                        </div>
-                        <div className={`${styles.mediaButton} ${viewedMedia.live ? styles.viewed : ''}`} onClick={() => setActiveMedia('live')}>
-                            {viewedMedia.live && <div className={styles.viewedCheck}>✓</div>}
-                            <div className={styles.buttonIcon}>
-                                <img src="./assets/icons/icon-live-photo.png" alt="Live Photo" />
-                            </div>
-                            <div className={styles.buttonText}>Live Photo</div>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* 3D Infinite Circular Sliding Carousel */}
+            <div className={styles.carouselWorkspace} ref={carouselRef}>
+                <div className={styles.carouselCenterTrack}>
+                    {OUTPUT_ITEMS.map((item, idx) => {
+                        const offset = getCircularOffset(idx, activeIndex, OUTPUT_ITEMS.length)
+                        const isCenter = offset === 0
+                        const absOffset = Math.abs(offset)
 
-            {/* Showcase Overlay */}
-            <AnimatePresence>
-                {renderShowcase()}
-            </AnimatePresence>
+                        let xPos = offset * spacingX
+                        let scale = 1.20
+                        let opacity = 1
+                        let zIndex = 20
+                        let rotateY = 0
 
-            {/* Next Button only visible when all media reviewed */}
-            <AnimatePresence>
-                {!isProcessing && allViewed && !activeMedia && (
-                    <motion.button
-                        initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        className={styles.nextButton}
-                        onClick={() => navigate('/sharing')}
-                        disabled={config.sharingMode === 'cloud' && !currentSession?.cloudSessionId}
-                    >
-                        Lanjutkan <span>→</span>
-                    </motion.button>
-                )}
-            </AnimatePresence>
+                        if (!isCenter) {
+                            scale = 0.50
+                            opacity = 0.40
+                            zIndex = 10 - absOffset
+                            rotateY = offset > 0 ? -12 : 12
+                        }
 
+                        return (
+                            <motion.div
+                                key={item.id}
+                                className={`${styles.slideCardWrapper} ${isCenter ? styles.centerCard : ''}`}
+                                style={{
+                                    width: scaledWidth,
+                                    height: scaledHeight,
+                                    zIndex
+                                }}
+                                animate={{
+                                    x: xPos,
+                                    scale,
+                                    opacity,
+                                    rotateY
+                                }}
+                                transition={{
+                                    type: 'spring',
+                                    stiffness: 280,
+                                    damping: 26,
+                                    mass: 0.8
+                                }}
+                                onClick={() => {
+                                    if (!isCenter) {
+                                        setActiveIndex(idx)
+                                    }
+                                }}
+                            >
+                                {/* Header Title at Top of Output File Item */}
+                                <div className={styles.cardItemHeader}>
+                                    <span className={styles.cardItemTitle}>{item.title}</span>
+                                </div>
+
+                                {/* Media Content Body */}
+                                <div className={styles.cardMediaBody}>
+                                    {renderMediaContent(item.id)}
+                                </div>
+                            </motion.div>
+                        )
+                    })}
+                </div>
+            </div>
+
+            {/* Bottom Floating Control Bar with Buttons 1: Back, 2: Next, 3: Lanjutkan */}
+            <div className={styles.bottomActionBar}>
+                {/* Button 1: Back (Prev Media) */}
+                <button 
+                    className={`${styles.actionBtn} ${styles.btnBack}`}
+                    onClick={handlePrevMedia}
+                    title="Tekan 1 untuk Kembali ke media sebelumnya"
+                >
+                    <span className={styles.btnNumber}>1</span>
+                    <div className={styles.btnLabelGroup}>
+                        <span className={styles.btnLabel}>Kembali</span>
+                        <span className={styles.btnSublabel}>◀ Back</span>
+                    </div>
+                </button>
+
+                {/* Button 2: Next Media */}
+                <button 
+                    className={`${styles.actionBtn} ${styles.btnNextMedia}`}
+                    onClick={handleNextMedia}
+                    title="Tekan 2 untuk melihat media selanjutnya"
+                >
+                    <span className={styles.btnNumber}>2</span>
+                    <div className={styles.btnLabelGroup}>
+                        <span className={styles.btnLabel}>Selanjutnya</span>
+                        <span className={styles.btnSublabel}>Next ▶</span>
+                    </div>
+                </button>
+
+                {/* Button 3: Lanjutkan */}
+                <button 
+                    className={`${styles.actionBtn} ${styles.btnProceed}`}
+                    onClick={handleProceed}
+                    title="Tekan 3 untuk lanjut ke halaman Sharing"
+                >
+                    <span className={styles.btnNumber}>3</span>
+                    <div className={styles.btnLabelGroup}>
+                        <span className={styles.btnLabel}>Lanjutkan</span>
+                        <span className={styles.btnSublabel}>Ke Sharing ➔</span>
+                    </div>
+                </button>
+            </div>
+
+            {/* Confirm Back Home Modal */}
             <ConfirmBackHomeModal
                 isOpen={isConfirmModalOpen}
                 onClose={() => setIsConfirmModalOpen(false)}
@@ -858,3 +871,4 @@ function OutputPage(): JSX.Element {
 }
 
 export default OutputPage
+

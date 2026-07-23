@@ -4,73 +4,120 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     background-color: var(--clay-cream);
     background-image: radial-gradient(circle, rgba(26,26,46,0.06) 1.5px, transparent 1.5px);
     background-size: 28px 28px;
     position: relative;
     overflow: hidden;
+    padding: var(--spacing-lg) 0;
+    user-select: none;
+}
+
+.backButton {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    padding: 6px 14px;
+    background-color: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text-main);
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transition: all 0.2s ease;
+}
+
+.backButton:hover {
+    transform: translateY(-2px);
+    border-color: #cbd5e1;
 }
 
 .header {
-    position: absolute;
-    top: var(--spacing-xl);
-    left: 0;
     width: 100%;
     text-align: center;
     z-index: 10;
+    margin-top: var(--spacing-sm);
 }
 
 .header h2 {
     font-size: var(--font-size-2xl);
     color: var(--color-text-main);
     font-weight: 900;
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: 4px;
+    letter-spacing: -0.5px;
 }
 
-.header p { color: var(--color-text-secondary); font-weight: 600; }
+.header p {
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
+}
 
-.workspace {
+/* ── 3D Infinite Sliding Carousel Workspace ── */
+.carouselWorkspace {
     position: relative;
     width: 100%;
-    height: 100vh;
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    perspective: 1200px;
 }
 
-.canvasContainer {
+.carouselCenterTrack {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.slideCardWrapper {
     position: absolute;
-    border-radius: var(--radius-x1);
+    border-radius: 20px;
     overflow: hidden;
-    background: var(--clay-cream);
-    box-shadow: var(--clay-shadow-lg);
+    background: #ffffff;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+    will-change: transform, opacity;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    transition: border-color 0.3s ease;
+}
+
+.centerCard {
+    border: 4px solid var(--clay-blue);
+    box-shadow: 0 25px 60px rgba(59, 130, 246, 0.35);
+    cursor: default;
+}
+
+.innerCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+    background: #ffffff;
 }
 
 .slotWrapper {
     position: absolute;
     overflow: hidden;
-    transition: outline 0.2s ease;
     user-select: none;
-}
-
-.slotWrapper.selected {
-    outline: 4px solid #FFD700;
-    outline-offset: -4px;
-    box-shadow: 0 0 28px rgba(255, 215, 0, 0.45);
-    z-index: 20;
 }
 
 .photoImage {
     position: absolute;
-    pointer-events: auto;
+    pointer-events: none;
     transform-origin: center center;
-    will-change: transform;
-    cursor: grab;
 }
-
-.photoImage:active { cursor: grabbing; }
 
 .frameOverlay {
     position: absolute;
@@ -81,477 +128,175 @@
     z-index: 10;
 }
 
-/* Tools Panel — white floating pill */
-.toolsPanel {
+/* ── Plain White Filter Overlay Text (Fade In & Out After 2s) ── */
+.filterOverlayBadge {
     position: absolute;
-    bottom: var(--spacing-2xl);
-    background: #FFFFFF;
-    border: none;
-    padding: var(--spacing-md) var(--spacing-xl);
-    border-radius: var(--radius-2xl);
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-lg);
-    z-index: 30;
-    box-shadow: var(--clay-shadow-lg);
-}
-
-.toolGroup {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    padding-right: var(--spacing-lg);
-    border-right: 2px solid var(--clay-cream);
-}
-
-.toolGroup:last-child {
-    border-right: none;
-    padding-right: 0;
-}
-
-.toolButton {
-    background: var(--clay-cream);
-    border: none;
-    color: var(--clay-blue);
-    width: 52px;
-    height: 52px;
-    border-radius: var(--radius-full);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 1.4rem;
-    font-weight: 900;
-    transition: all var(--transition-bouncy);
-    box-shadow: var(--clay-shadow-sm);
-}
-
-.toolButton:hover:not(:disabled) { transform: translateY(-4px) scale(1.08); box-shadow: var(--clay-shadow-blue); }
-.toolButton:active:not(:disabled) { transform: scale(0.90); box-shadow: var(--clay-shadow-sm); }
-
-.toolButton:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Retake Button — coral */
-.retakeBtn {
-    background: var(--clay-coral);
-    color: #FFFFFF;
-    border: none;
-    padding: 0 var(--spacing-xl);
-    border-radius: var(--radius-full);
-    height: 52px;
-    font-weight: 900;
-    cursor: pointer;
-    transition: all var(--transition-bouncy);
-    box-shadow: var(--clay-shadow-coral);
-    font-size: var(--font-size-base);
-}
-
-.retakeBtn:hover:not(:disabled) { transform: translateY(-4px) scale(1.03); }
-.retakeBtn:active:not(:disabled) { transform: scale(0.92); box-shadow: var(--clay-shadow-sm); }
-.retakeBtn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Filter Tabs */
-.filterTabs {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: 0 var(--spacing-sm);
-    border-right: 2px solid var(--clay-cream);
-    margin-right: var(--spacing-sm);
-}
-
-.filterBtn {
-    background: var(--clay-cream);
-    border: none;
-    border-radius: var(--radius-xl);
-    padding: var(--spacing-sm);
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--spacing-xs);
-    color: var(--color-text-main);
-    font-weight: 800;
-    transition: all var(--transition-bouncy);
-    font-size: 0.75rem;
-    box-shadow: var(--clay-shadow-sm);
-}
-
-.filterBtn:hover { transform: translateY(-4px); }
-
-.filterBtn.active {
-    background: var(--clay-yellow);
-    box-shadow: var(--clay-shadow-yellow);
-    color: #1A1A2E;
-    transform: scale(1.06) translateY(-4px);
-}
-
-.filterBtn:active:not(.active) { transform: scale(0.92); }
-
-.filterPreview {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    position: relative;
-    background: rgba(0,0,0,0.08);
-}
-
-.filterPreview img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-/* Next Step Button — big green pill */
-.nextBtn {
-    background: var(--clay-green);
-    color: #FFFFFF;
-    border: none;
-    padding: 0 var(--spacing-2xl);
-    border-radius: var(--radius-full);
-    height: 60px;
-    font-weight: 900;
-    font-size: var(--font-size-xl);
-    cursor: pointer;
-    transition: all var(--transition-bouncy);
-    box-shadow: var(--clay-shadow-green);
-}
-
-.nextBtn:hover { transform: translateY(-5px) scale(1.03); box-shadow: 0 16px 40px rgba(62, 193, 138, 0.52); }
-.nextBtn:active { transform: scale(0.92) translateY(3px); box-shadow: var(--clay-shadow-sm); }
-
-.previewBtn {
-    background: var(--clay-blue);
-    color: white;
-    border: none;
-    padding: var(--spacing-sm) var(--spacing-lg);
-    border-radius: var(--radius-lg);
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.previewBtn:hover { background: var(--clay-blue-dark); }
-
-/* Preview Mode Styles */
-.previewContainer {
-    width: 100%;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background-color: #000;
-    position: relative;
-}
-
-.previewPhotoWrapper {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-}
-
-.previewPhoto {
-    max-width: 100%;
-    max-height: 100%;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    cursor: grab;
-}
-
-.previewPhoto img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-}
-
-.navigationButtons {
-    position: absolute;
-    bottom: 20px;
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    background: rgba(0, 0, 0, 0.5);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--radius-xl);
-    backdrop-filter: blur(10px);
-}
-
-.navBtn {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-    border: none;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 1.5rem;
-    font-weight: bold;
-    transition: all 0.2s ease;
-}
-
-.navBtn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.3);
-    transform: scale(1.1);
-}
-
-.navBtn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-.photoIndicator {
-    color: white;
-    font-weight: 700;
-    font-size: var(--font-size-lg);
+    transform: translate(-50%, -50%);
     background: transparent;
-    padding: 0;
-    border-radius: 0;
-}
-
-.previewControls {
-    position: absolute;
-    bottom: var(--spacing-2xl);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--spacing-md);
-    width: 100%;
-    max-width: 400px;
-}
-
-.retakeBtn, .continueBtn {
-    width: 100%;
-    background: var(--clay-coral);
-    color: #FFFFFF;
     border: none;
-    padding: var(--spacing-md) var(--spacing-xl);
-    border-radius: var(--radius-full);
-    height: 52px;
+    color: #ffffff;
+    padding: 0;
+    font-size: 38px;
     font-weight: 900;
+    letter-spacing: 2px;
+    box-shadow: none;
+    pointer-events: none;
+    z-index: 30;
+    white-space: nowrap;
+    text-transform: uppercase;
+    text-shadow: 0 4px 20px rgba(0, 0, 0, 0.85);
+}
+
+/* ── Bottom Floating Action Bar (Buttons 1, 2, 3) ── */
+.bottomActionBar {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(16px);
+    padding: 12px 20px;
+    border-radius: var(--radius-2xl);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    margin-bottom: var(--spacing-sm);
+}
+
+.actionBtn {
+    border: none;
+    background: var(--clay-cream);
+    padding: 10px 20px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     cursor: pointer;
     transition: all var(--transition-bouncy);
-    box-shadow: var(--clay-shadow-coral);
-    font-size: var(--font-size-base);
-}
-
-.continueBtn {
-    background: var(--clay-blue);
-    box-shadow: var(--clay-shadow-blue);
-}
-
-.retakeBtn:hover:not(:disabled), .continueBtn:hover:not(:disabled) { 
-    transform: translateY(-4px) scale(1.03); 
-}
-
-.retakeBtn:active:not(:disabled), .continueBtn:active:not(:disabled) { 
-    transform: scale(0.92); 
-    box-shadow: var(--clay-shadow-sm); 
-}
-
-.retakeBtn:disabled, .continueBtn:disabled { 
-    opacity: 0.4; 
-    cursor: not-allowed; 
-}
-
-/* New Layout Styles - Main Layout with Right Sidebar */
-.mainLayout {
-    width: 100%;
-    height: 100vh;
-    display: flex;
-    background-color: var(--clay-cream);
-    background-image: radial-gradient(circle, rgba(26,26,46,0.06) 1.5px, transparent 1.5px);
-    background-size: 28px 28px;
-}
-
-.workspace {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--spacing-xl);
-    min-width: 0; /* Allow shrinking */
-}
-
-.rightSidebar {
-    width: 320px;
-    background: #FFFFFF;
-    border-left: 2px solid var(--clay-cream);
-    display: flex;
-    flex-direction: column;
-    box-shadow: var(--clay-shadow-lg);
-    z-index: 20;
-}
-
-.controlsSection {
-    flex: 1;
-    padding: var(--spacing-xl);
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
-    overflow-y: auto;
-}
-
-.controlsSection .toolGroup {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md);
-    background: var(--clay-cream);
-    border-radius: var(--radius-xl);
     box-shadow: var(--clay-shadow-sm);
 }
 
-.controlsSection .filterTabs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md);
-    background: var(--clay-cream);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--clay-shadow-sm);
-    border-right: none;
-    margin-right: 0;
+.actionBtn:hover {
+    transform: translateY(-3px) scale(1.03);
 }
 
-.controlsSection .nextBtn {
-    margin-top: auto;
-    align-self: stretch;
+.actionBtn:active {
+    transform: scale(0.95);
+}
+
+.btnNumber {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-text-main);
+    color: #ffffff;
+    font-weight: 900;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+}
+
+.btnLabelGroup {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+}
+
+.btnLabel {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 800;
+    color: var(--color-text-secondary);
+}
+
+.btnSublabel {
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--color-text-main);
+}
+
+/* Button variants */
+.btnFilter {
+    background: #eff6ff;
+}
+
+.btnFilter .btnNumber {
+    background: #3b82f6;
+}
+
+.btnFilter .btnSublabel {
+    color: #1d4ed8;
+}
+
+.btnMirror {
+    background: #fdf4ff;
+}
+
+.btnMirror .btnNumber {
+    background: #c084fc;
+}
+
+.btnMirror .btnSublabel {
+    color: #7e22ce;
+}
+
+.btnMirror.mirrorActive {
+    background: #f3e8ff;
+    border: 2px solid #a855f7;
+}
+
+.btnNext {
+    background: #ecfdf5;
+}
+
+.btnNext .btnNumber {
+    background: #10b981;
+}
+
+.btnNext .btnSublabel {
+    color: #047857;
 }
 
 /* ── PORTRAIT MODE OVERRIDES ── */
 :global(body.app-portrait) .container {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100vh !important;
+    padding: var(--spacing-md) 0 !important;
 }
 
-:global(body.app-portrait) .mainLayout {
-    flex-direction: column !important;
-    height: 100vh !important;
+:global(body.app-portrait) .header h2 {
+    font-size: var(--font-size-xl) !important;
 }
 
-:global(body.app-portrait) .workspace {
-    flex: 1 !important;
-    height: auto !important;
-    min-height: 0 !important;
-    padding: var(--spacing-md) !important;
+:global(body.app-portrait) .header p {
+    font-size: 0.85rem !important;
 }
 
-:global(body.app-portrait) .rightSidebar {
-    width: 100% !important;
-    height: auto !important;
-    max-height: 40vh !important;
-    border-left: none !important;
-    border-top: 2px solid var(--clay-cream) !important;
-    box-shadow: 0 -8px 28px rgba(0,0,0,0.1) !important;
-}
-
-:global(body.app-portrait) .controlsSection {
-    padding: var(--spacing-md) !important;
-    gap: var(--spacing-md) !important;
-}
-
-:global(body.app-portrait) .controlsSection .toolGroup {
-    flex-direction: row !important;
-    width: 100% !important;
-    justify-content: space-around !important;
-    padding: 10px !important;
-}
-
-:global(body.app-portrait) .controlsSection .filterTabs {
-    display: flex !important;
-    flex-direction: row !important;
-    grid-template-columns: none !important;
-    overflow-x: auto !important;
+:global(body.app-portrait) .bottomActionBar {
     gap: var(--spacing-sm) !important;
-    padding: var(--spacing-sm) !important;
-    border-right: none !important;
-    margin-right: 0 !important;
+    padding: 8px 12px !important;
+    max-width: 95% !important;
 }
 
-:global(body.app-portrait) .filterBtn {
-    flex-shrink: 0 !important;
-    min-width: 80px !important;
+:global(body.app-portrait) .actionBtn {
+    padding: 8px 12px !important;
+    gap: 8px !important;
 }
 
-:global(body.app-portrait) .toolsPanel {
-    bottom: var(--spacing-lg) !important;
-    padding: var(--spacing-sm) var(--spacing-lg) !important;
-    gap: var(--spacing-md) !important;
+:global(body.app-portrait) .btnNumber {
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 13px !important;
 }
 
-:global(body.app-portrait) .nextBtn {
-    height: 52px !important;
-    font-size: var(--font-size-lg) !important;
-    padding: 0 var(--spacing-xl) !important;
+:global(body.app-portrait) .btnLabel {
+    font-size: 9px !important;
 }
 
-
-.mirrorGroup {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--spacing-md);
-    background: var(--clay-cream);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--clay-shadow-sm);
-    color: var(--color-text-main);
-    font-weight: 800;
-    font-size: 0.9rem;
+:global(body.app-portrait) .btnSublabel {
+    font-size: 12px !important;
 }
-
-.toggleSwitch {
-    position: relative;
-    display: inline-block;
-    width: 56px;
-    height: 28px;
-}
-
-.toggleSwitch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggleSlider {
-    position: absolute;
-    cursor: pointer;
-    inset: 0;
-    background-color: var(--color-text-secondary);
-    border: 2px solid var(--clay-cream);
-    border-radius: var(--radius-full);
-    transition: all 0.3s ease;
-}
-
-.toggleSlider::before {
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    left: 2px;
-    bottom: 2px;
-    background-color: white;
-    border-radius: 50%;
-    transition: all 0.3s ease;
-}
-
-.toggleSwitch input:checked + .toggleSlider {
-    background-color: var(--clay-green);
-}
-
-.toggleSwitch input:checked + .toggleSlider::before {
-    transform: translateX(28px);
-}
-
-
