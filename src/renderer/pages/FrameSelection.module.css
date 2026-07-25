@@ -38,8 +38,14 @@
     transition: all var(--transition-bouncy);
 }
 
-.backButton:hover { transform: translateY(-4px) scale(1.03); }
-.backButton:active { transform: scale(0.92) translateY(2px); box-shadow: var(--clay-shadow-sm); }
+.backButton:hover {
+    transform: translateY(-4px) scale(1.03);
+}
+
+.backButton:active {
+    transform: scale(0.92) translateY(2px);
+    box-shadow: var(--clay-shadow-sm);
+}
 
 .content {
     flex: 1;
@@ -126,7 +132,7 @@
     color: white;
     font-size: var(--font-size-2xl);
     font-weight: 900;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .frameInfo {
@@ -148,7 +154,8 @@
 }
 
 /* Nav Control Side Buttons */
-.navArrowLeft, .navArrowRight {
+.navArrowLeft,
+.navArrowRight {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
@@ -165,20 +172,27 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
     transition: all 0.2s ease;
 }
 
-.navArrowLeft { left: 40px; }
-.navArrowRight { right: 40px; }
+.navArrowLeft {
+    left: 40px;
+}
 
-.navArrowLeft:hover, .navArrowRight:hover {
+.navArrowRight {
+    right: 40px;
+}
+
+.navArrowLeft:hover,
+.navArrowRight:hover {
     background: #3b82f6;
     color: #ffffff;
     transform: translateY(-50%) scale(1.1);
 }
 
-.navArrowLeft:active, .navArrowRight:active {
+.navArrowLeft:active,
+.navArrowRight:active {
     transform: translateY(-50%) scale(0.95);
 }
 
@@ -224,7 +238,7 @@
     background: rgba(255, 255, 255, 0.8);
     padding: 6px 16px;
     border-radius: 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 /* Empty State */
@@ -238,7 +252,10 @@
     gap: var(--spacing-md);
 }
 
-.emptyIcon { font-size: 80px; margin-bottom: var(--spacing-md); }
+.emptyIcon {
+    font-size: 80px;
+    margin-bottom: var(--spacing-md);
+}
 
 .emptyState h2 {
     font-size: var(--font-size-2xl);
@@ -246,7 +263,9 @@
     font-weight: 900;
 }
 
-.emptyState p { color: var(--color-text-secondary); }
+.emptyState p {
+    color: var(--color-text-secondary);
+}
 
 .adminButton {
     margin-top: var(--spacing-lg);
@@ -266,5 +285,10 @@
     width: 300px;
 }
 
-:global(body.app-portrait) .navArrowLeft { left: 16px; }
-:global(body.app-portrait) .navArrowRight { right: 16px; }
+:global(body.app-portrait) .navArrowLeft {
+    left: 16px;
+}
+
+:global(body.app-portrait) .navArrowRight {
+    right: 16px;
+}

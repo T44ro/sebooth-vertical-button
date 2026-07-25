@@ -80,7 +80,7 @@ function PaymentGateway(): JSX.Element {
     // Create QRIS order
     const createOrder = async (): Promise<void> => {
         const isDoku = config.paymentGateway === 'doku'
-        
+
         if (isDoku) {
             if (!config.dokuClientId || !config.dokuSecretKey) {
                 alert('DOKU Client ID atau Secret Key belum dikonfigurasi di Admin Panel')
@@ -293,12 +293,12 @@ function PaymentGateway(): JSX.Element {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
-            if (e.key === '1') {
+            if (e.key === '3') {
                 e.preventDefault()
                 if (additionalPrints > 0) {
                     handlePrintChange(-2)
                 }
-            } else if (e.key === '3') {
+            } else if (e.key === '1') {
                 e.preventDefault()
                 handlePrintChange(2)
             } else if (e.key === '2') {
@@ -412,66 +412,66 @@ function PaymentGateway(): JSX.Element {
                                 </div>
                             )}
 
-                        {!isCreatingOrder && payment.status === 'idle' && null}
+                            {!isCreatingOrder && payment.status === 'idle' && null}
 
-                        {!isCreatingOrder && payment.status === 'pending' && (payment.qrString || payment.qrisUrl) && (
-                            <div className={styles.qrDisplay}>
-                                {/* Countdown Timer Badge */}
-                                <div className={styles.timerBadge}>
-                                    <span className={styles.timerIcon}>⏰</span>
-                                    <div className={styles.timerInfo}>
-                                        <span className={styles.timerLabel}>Sisa Waktu Pembayaran</span>
-                                        <span className={styles.timerValue}>{formatTimeLeft(paymentTimeLeft)}</span>
+                            {!isCreatingOrder && payment.status === 'pending' && (payment.qrString || payment.qrisUrl) && (
+                                <div className={styles.qrDisplay}>
+                                    {/* Countdown Timer Badge */}
+                                    <div className={styles.timerBadge}>
+                                        <span className={styles.timerIcon}>⏰</span>
+                                        <div className={styles.timerInfo}>
+                                            <span className={styles.timerLabel}>Sisa Waktu Pembayaran</span>
+                                            <span className={styles.timerValue}>{formatTimeLeft(paymentTimeLeft)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className={styles.qrCodeContainer}>
+                                        {payment.qrString ? (
+                                            <div className={styles.qrWrapper}>
+                                                <QRCode value={payment.qrString} size={340} />
+                                            </div>
+                                        ) : payment.qrisUrl && (payment.qrisUrl.startsWith('data:image') || payment.qrisUrl.startsWith('http')) ? (
+                                            <div className={styles.qrWrapper}>
+                                                <img src={payment.qrisUrl} alt="Kode QRIS" className={styles.qrImage} />
+                                            </div>
+                                        ) : (
+                                            <div className={styles.qrWrapper}>
+                                                <QRCode value={payment.qrisUrl || ''} size={340} />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
+                            )}
 
-                                <div className={styles.qrCodeContainer}>
-                                    {payment.qrString ? (
-                                        <div className={styles.qrWrapper}>
-                                            <QRCode value={payment.qrString} size={340} />
-                                        </div>
-                                    ) : payment.qrisUrl && (payment.qrisUrl.startsWith('data:image') || payment.qrisUrl.startsWith('http')) ? (
-                                        <div className={styles.qrWrapper}>
-                                            <img src={payment.qrisUrl} alt="Kode QRIS" className={styles.qrImage} />
-                                        </div>
-                                    ) : (
-                                        <div className={styles.qrWrapper}>
-                                            <QRCode value={payment.qrisUrl || ''} size={340} />
-                                        </div>
-                                    )}
+                            {payment.status === 'success' && (
+                                <div className={styles.successDisplay}>
+                                    <span className={styles.successIcon}>✓</span>
+                                    <h3>Pembayaran Berhasil!</h3>
+                                    <p>Mengalihkan ke sesi foto...</p>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {payment.status === 'success' && (
-                            <div className={styles.successDisplay}>
-                                <span className={styles.successIcon}>✓</span>
-                                <h3>Pembayaran Berhasil!</h3>
-                                <p>Mengalihkan ke sesi foto...</p>
-                            </div>
-                        )}
+                            {payment.status === 'expired' && (
+                                <div className={styles.errorDisplay}>
+                                    <span>⏰</span>
+                                    <h3>Waktu Pembayaran Habis</h3>
+                                    <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, qrString: null, transactionId: null, expiredDatetime: null })}>
+                                        Coba Lagi
+                                    </button>
+                                </div>
+                            )}
 
-                        {payment.status === 'expired' && (
-                            <div className={styles.errorDisplay}>
-                                <span>⏰</span>
-                                <h3>Waktu Pembayaran Habis</h3>
-                                <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, qrString: null, transactionId: null, expiredDatetime: null })}>
-                                    Coba Lagi
-                                </button>
-                            </div>
-                        )}
-
-                        {payment.status === 'failed' && (
-                            <div className={styles.errorDisplay}>
-                                <span>❌</span>
-                                <h3>Pembayaran Gagal</h3>
-                                <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, qrString: null, transactionId: null, expiredDatetime: null })}>
-                                    Coba Lagi
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
+                            {payment.status === 'failed' && (
+                                <div className={styles.errorDisplay}>
+                                    <span>❌</span>
+                                    <h3>Pembayaran Gagal</h3>
+                                    <button onClick={() => setPayment({ status: 'idle', orderId: null, qrisUrl: null, qrString: null, transactionId: null, expiredDatetime: null })}>
+                                        Coba Lagi
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
             </div>

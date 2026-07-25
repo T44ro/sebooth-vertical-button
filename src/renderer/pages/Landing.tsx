@@ -308,25 +308,41 @@ function Landing(): JSX.Element {
                 const rotation = config.cameraRotation || 0
                 const isRotated90or270 = rotation === 90 || rotation === 270
 
-                const videoStyle: React.CSSProperties = isRotated90or270
-                    ? {
-                        position: 'absolute',
+                // All positioning is set inline to avoid CSS !important conflicts.
+                // For 90°/270°: the pre-rotation element must be large enough that
+                // after rotation the visible area covers the full container.
+                const baseStyle: React.CSSProperties = {
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100vw',
+                    height: '100vh',
+                    objectFit: 'cover' as const,
+                }
+
+                let videoStyle: React.CSSProperties
+
+                if (isRotated90or270) {
+                    videoStyle = {
+                        position: 'fixed',
                         top: '50%',
                         left: '50%',
-                        width: '100vh',
-                        height: '100vw',
+                        width: 'max(100vw, 100vh)',
+                        height: 'max(100vw, 100vh)',
                         transform: `translate(-50%, -50%) rotate(${rotation}deg) scaleX(-1)`,
-                        objectFit: 'cover'
+                        objectFit: 'cover' as const,
                     }
-                    : rotation === 180
-                    ? {
+                } else if (rotation === 180) {
+                    videoStyle = {
+                        ...baseStyle,
                         transform: 'rotate(180deg) scaleX(-1)',
-                        objectFit: 'cover'
                     }
-                    : {
+                } else {
+                    videoStyle = {
+                        ...baseStyle,
                         transform: 'scaleX(-1)',
-                        objectFit: 'cover'
                     }
+                }
 
                 return (
                     <video

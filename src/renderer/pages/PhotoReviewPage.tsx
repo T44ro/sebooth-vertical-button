@@ -199,9 +199,14 @@ function PhotoReviewPage(): JSX.Element | null {
                                     const offset = index - activeIndex
                                     const isCenter = index === activeIndex
 
-                                    const cardSpacing = 370
+                                    // Vertical (portrait 2:3 aspect ratio) card dimensions
+                                    const isPortraitMode = config.appOrientation === 'portrait'
+                                    const cardHeight = isPortraitMode ? 260 : 280
+                                    const cardWidth = Math.round(cardHeight * (2 / 3)) // ~173px in portrait, ~187px in landscape (vertical)
+
+                                    const cardSpacing = cardWidth + 50
                                     const translateX = offset * cardSpacing
-                                    const cardScale = isCenter ? 1.35 : Math.max(0.65, 1 - Math.abs(offset) * 0.3)
+                                    const cardScale = isCenter ? 1.3 : Math.max(0.65, 1 - Math.abs(offset) * 0.3)
                                     const cardOpacity = isCenter ? 1 : Math.max(0.35, 1 - Math.abs(offset) * 0.4)
                                     const zIndex = 100 - Math.abs(offset)
 
@@ -212,6 +217,12 @@ function PhotoReviewPage(): JSX.Element | null {
                                             key={slot.id}
                                             className={`${styles.carouselCard} ${isCenter ? styles.centerCard : styles.sideCard}`}
                                             onClick={() => setActiveIndex(index)}
+                                            style={{
+                                                width: `${cardWidth}px`,
+                                                height: `${cardHeight}px`,
+                                                marginLeft: `-${cardWidth / 2}px`,
+                                                marginTop: `-${cardHeight / 2}px`
+                                            }}
                                             animate={{
                                                 x: translateX,
                                                 scale: cardScale,

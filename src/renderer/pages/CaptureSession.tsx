@@ -92,12 +92,19 @@ function CaptureSession(): JSX.Element {
         const W = vf.clientWidth
         const H = vf.clientHeight
         setViewfinderSize({ width: W, height: H })
-        const ratio = slotAspectNumeric || 4 / 3
 
-        const safeW = Math.min(W, Math.round(H * ratio))
-        const safeH = Math.round(safeW / ratio)
-        const left = Math.round((W - safeW) / 2)
-        const top = Math.round((H - safeH) / 2)
+        const ratio = slotAspectNumeric || (4 / 3)
+
+        let safeW = W
+        let safeH = Math.round(W / ratio)
+
+        if (safeH > H) {
+            safeH = H
+            safeW = Math.round(H * ratio)
+        }
+
+        const left = Math.max(0, Math.round((W - safeW) / 2))
+        const top = Math.max(0, Math.round((H - safeH) / 2))
 
         setSafeArea({ left, top, width: safeW, height: safeH })
     }
@@ -1003,6 +1010,36 @@ function CaptureSession(): JSX.Element {
                             />
                         )
                     })()}
+
+                    {/* Black Bars Overlay for Photo Slot Framing */}
+                    {safeArea.width > 0 && (
+                        <div className={styles.safeAreaOverlay}>
+                            {safeArea.left > 0 && (
+                                <>
+                                    <div
+                                        className={styles.leftBar}
+                                        style={{ left: 0, width: `${safeArea.left}px`, top: 0, height: '100%' }}
+                                    />
+                                    <div
+                                        className={styles.rightBar}
+                                        style={{ left: `${safeArea.left + safeArea.width}px`, width: `${safeArea.left}px`, top: 0, height: '100%' }}
+                                    />
+                                </>
+                            )}
+                            {safeArea.top > 0 && (
+                                <>
+                                    <div
+                                        className={styles.topBar}
+                                        style={{ top: 0, height: `${safeArea.top}px`, left: 0, width: '100%' }}
+                                    />
+                                    <div
+                                        className={styles.bottomBar}
+                                        style={{ top: `${safeArea.top + safeArea.height}px`, height: `${safeArea.top}px`, left: 0, width: '100%' }}
+                                    />
+                                </>
+                            )}
+                        </div>
+                    )}
 
                     {/* Loading Overlay */}
                     {isLoadingCamera && (

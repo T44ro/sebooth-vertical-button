@@ -172,15 +172,11 @@
     justify-content: center;
 }
 
-/* Maximized Card Size */
+/* Dynamically sized Carousel Card */
 .carouselCard {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 320px;
-    height: 220px;
-    margin-left: -160px;
-    margin-top: -110px;
     border-radius: 20px;
     overflow: hidden;
     cursor: pointer;
@@ -245,11 +241,4 @@
 
 :global(body.app-portrait) .bottomSection {
     flex: 1.35 !important;
-}
-
-:global(body.app-portrait) .carouselCard {
-    width: 250px !important;
-    height: 180px !important;
-    margin-left: -125px !important;
-    margin-top: -90px !important;
 }
