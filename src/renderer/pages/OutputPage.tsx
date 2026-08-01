@@ -417,8 +417,6 @@ function OutputPage(): JSX.Element {
             else if (selectedFilter === 'warm') filterStr = 'saturate(1.3) hue-rotate(-10deg)'
             else if (selectedFilter === 'cool') filterStr = 'saturate(1.1) hue-rotate(10deg)'
             else if (selectedFilter === 'vintage') filterStr = 'contrast(1.1) brightness(0.9) sepia(30%)'
-            
-            ctx.filter = filterStr;
 
             for (const slot of sessionFrame.slots) {
                 const photo = getPhotoForSlot(slot)
@@ -428,6 +426,7 @@ function OutputPage(): JSX.Element {
                     const img = await loadImage(photo.imagePath)
 
                     ctx.save()
+                    ctx.filter = filterStr;
                     ctx.translate(slot.x + slot.width / 2, slot.y + slot.height / 2)
                     ctx.rotate((slot.rotation * Math.PI) / 180)
 
