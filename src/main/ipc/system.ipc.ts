@@ -232,6 +232,7 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
         overlay?: { path: string; filename: string }
         mirrorOutput?: boolean
         cameraRotation?: 0 | 90 | 180 | 270
+        videoSource?: 'capture_card' | 'usb_liveview' | 'webcam'
         frameConfig?: {
             width: number
             height: number
@@ -334,13 +335,61 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                     const destPath = join(baseDir, stripFilename)
 
                     const validInputs: { path: string; slot: { width: number; height: number; x: number; y: number; rotation?: number }; index: number }[] = []
-                    params.videos.forEach((v, i) => {
-                        if (!v.path || !params.frameConfig!.slots[i]) return;
-                        const cleanUrl = v.path.startsWith('file:///') ? decodeURIComponent(new URL(v.path).pathname.substring(process.platform === 'win32' ? 1 : 0)) : decodeURIComponent(v.path)
-                        if (existsSync(cleanUrl)) {
-                            validInputs.push({ path: cleanUrl, slot: params.frameConfig!.slots[i], index: validInputs.length })
+                    for (let i = 0; i < params.videos.length; i++) {
+                        const v = params.videos[i]
+                        const slot = params.frameConfig!.slots[i]
+                        if (!slot) continue;
+
+                        if (v.path) {
+                            const cleanUrl = v.path.startsWith('file:///') ? decodeURIComponent(new URL(v.path).pathname.substring(process.platform === 'win32' ? 1 : 0)) : decodeURIComponent(v.path)
+                            if (existsSync(cleanUrl)) {
+                                validInputs.push({ path: cleanUrl, slot, index: validInputs.length })
+                                continue
+                            }
                         }
-                    })
+
+                        // Fallback: If video is missing but photo exists for this slot, generate a static video
+                        const photoForSlot = params.photos[i]
+                        if (photoForSlot && photoForSlot.path) {
+                            let photoPath = ''
+                            if (photoForSlot.path.startsWith('data:')) {
+                                // Save base64 photo to temp file first
+                                const matches = photoForSlot.path.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/)
+                                if (matches) {
+                                    const tempPhotoPath = join(baseDir, `temp_fallback_photo_${i}.jpg`)
+                                    writeFileSync(tempPhotoPath, Buffer.from(matches[2], 'base64'))
+                                    photoPath = tempPhotoPath
+                                }
+                            } else {
+                                const cleanPhotoUrl = photoForSlot.path.startsWith('file:///') ? decodeURIComponent(new URL(photoForSlot.path).pathname.substring(process.platform === 'win32' ? 1 : 0)) : decodeURIComponent(photoForSlot.path)
+                                if (existsSync(cleanPhotoUrl)) {
+                                    photoPath = cleanPhotoUrl
+                                }
+                            }
+
+                            if (photoPath) {
+                                // Generate a 3-second static video from the photo using FFmpeg
+                                const fallbackVideoPath = join(baseDir, `fallback_video_${i}.mp4`)
+                                try {
+                                    await new Promise<void>((resolveFF, rejectFF) => {
+                                        ffmpeg()
+                                            .input(photoPath)
+                                            .inputOptions(['-loop 1', '-t 3'])
+                                            .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 28', '-pix_fmt yuv420p', '-t 3'])
+                                            .save(fallbackVideoPath)
+                                            .on('end', () => resolveFF())
+                                            .on('error', (err: Error) => rejectFF(err))
+                                    })
+                                    if (existsSync(fallbackVideoPath)) {
+                                        console.log(`[SaveSession] Generated fallback static video for slot ${i} from photo`)
+                                        validInputs.push({ path: fallbackVideoPath, slot, index: validInputs.length })
+                                    }
+                                } catch (ffErr) {
+                                    console.warn(`[SaveSession] Failed to generate fallback video for slot ${i}:`, ffErr)
+                                }
+                            }
+                        }
+                    }
 
                     console.log('DEBUG validInputs length:', validInputs.length, 'slots configured:', params.frameConfig?.slots?.length)
 
@@ -376,8 +425,14 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                             // Construct complex filter graph
                             let filterGraph = ''
 
-                            // 1. Scale all videos safely and map them (Object-fit: cover behavior + Rotation geometry)
-                            const camRot = params.cameraRotation || 0
+                            // Determine if we should apply camera rotation/mirror transforms.
+                            // Capture card videos already have correct orientation (recorded from
+                            // the HDMI stream which matches what the user sees on screen),
+                            // so we SKIP cameraRotation and hflip to avoid double-transform.
+                            const isCaptureCardVideo = params.videoSource === 'capture_card'
+                            const camRot = isCaptureCardVideo ? 0 : (params.cameraRotation || 0)
+                            const shouldMirror = isCaptureCardVideo ? false : !!params.mirrorOutput
+
                             let camRotFilter = ''
                             if (camRot === 90) {
                                 camRotFilter = 'transpose=1' // 90 deg CW
@@ -404,7 +459,7 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                                     inputPipeline += `,${camRotFilter}`
                                 }
                                 inputPipeline += `,scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`
-                                if (params.mirrorOutput) {
+                                if (shouldMirror) {
                                     inputPipeline += `,hflip`
                                 }
                                 if (rotFilter) {
@@ -516,7 +571,8 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
                         const mp4Filename = video.filename.replace(/\.webm$/, '.mp4')
                         const destPath = join(baseDir, mp4Filename)
 
-                        const camRot = params.cameraRotation || 0
+                        const isCaptureCardLegacy = params.videoSource === 'capture_card'
+                        const camRot = isCaptureCardLegacy ? 0 : (params.cameraRotation || 0)
                         let camRotFilter = ''
                         if (camRot === 90) {
                             camRotFilter = 'transpose=1'
@@ -528,7 +584,7 @@ export function registerSystemHandlers(ipcMain: IpcMain): void {
 
                         let videoFilter = ''
                         if (camRotFilter) videoFilter = camRotFilter
-                        if (params.mirrorOutput) {
+                        if (!isCaptureCardLegacy && params.mirrorOutput) {
                             videoFilter += videoFilter ? ',hflip' : 'hflip'
                         }
 

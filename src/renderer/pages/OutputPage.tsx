@@ -152,6 +152,12 @@ function OutputPage(): JSX.Element {
                         overlay: { path: sessionFrame.overlayPath, filename: 'overlay.png' },
                         mirrorOutput: isMirrored,
                         cameraRotation: config.cameraRotation || 0,
+                        // Capture card videos (EDSDK+HDMI) already have correct orientation
+                        // from the MediaRecorder recording the HDMI stream as-is.
+                        // USB live view videos need rotation/mirror transforms applied.
+                        videoSource: (config.cameraMode === 'edsdk' && config.selectedCameraId)
+                            ? 'capture_card'
+                            : (config.cameraMode === 'edsdk' ? 'usb_liveview' : 'webcam'),
                         frameConfig: {
                             width: sessionFrame.canvasWidth,
                             height: sessionFrame.canvasHeight,
@@ -649,7 +655,14 @@ function OutputPage(): JSX.Element {
                             const cameraRotation = config.cameraRotation || 0
                             const isRotated90or270 = cameraRotation === 90 || cameraRotation === 270
 
-                            const camRotTransform = isVideo && isRotated90or270
+                            // Capture card videos (EDSDK+HDMI) are recorded from the
+                            // MediaRecorder stream which already has correct orientation.
+                            // Only USB live view videos need rotation/mirror CSS correction.
+                            const isCaptureCardSource = isVideo && config.cameraMode === 'edsdk' && !!config.selectedCameraId
+
+                            const camRotTransform = isCaptureCardSource
+                                ? '' // Capture card video: already correct orientation
+                                : isVideo && isRotated90or270
                                 ? `rotate(${cameraRotation}deg) scaleX(-1)`
                                 : isVideo && cameraRotation === 180
                                 ? `rotate(180deg) scaleX(-1)`
@@ -657,14 +670,17 @@ function OutputPage(): JSX.Element {
                                 ? `scaleX(-1)`
                                 : ''
 
+                            // For capture card videos, skip dimension swapping from rotation
+                            const effectiveRotated = isCaptureCardSource ? false : isRotated90or270
+
                             const mediaStyle: React.CSSProperties = {
                                 position: 'absolute',
-                                top: isVideo && isRotated90or270 ? '50%' : 0,
-                                left: isVideo && isRotated90or270 ? '50%' : 0,
-                                width: isVideo && isRotated90or270 ? `${slot.height}px` : '100%',
-                                height: isVideo && isRotated90or270 ? `${slot.width}px` : '100%',
+                                top: isVideo && effectiveRotated ? '50%' : 0,
+                                left: isVideo && effectiveRotated ? '50%' : 0,
+                                width: isVideo && effectiveRotated ? `${slot.height}px` : '100%',
+                                height: isVideo && effectiveRotated ? `${slot.width}px` : '100%',
                                 objectFit: 'cover',
-                                transform: isVideo && isRotated90or270
+                                transform: isVideo && effectiveRotated
                                     ? `translate(-50%, -50%) ${camRotTransform} translate(${photo.panX || 0}px, ${photo.panY || 0}px) scale(${photo.scale || 1})`
                                     : `translate(${photo.panX || 0}px, ${photo.panY || 0}px) scale(${photo.scale || 1}) ${camRotTransform}`,
                                 transformOrigin: 'center center',
