@@ -19,6 +19,7 @@ export interface SessionHistoryItem {
     email?: string
     print_count: number
     gallery_url?: string
+    frame_name?: string
     created_at: string
 }
 

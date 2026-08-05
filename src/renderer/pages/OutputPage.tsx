@@ -226,6 +226,7 @@ function OutputPage(): JSX.Element {
                 .upsert({
                     id: sessionId,
                     event_name: config.eventName || 'Sebooth Event',
+                    frame_name: sessionFrame?.name || '-',
                     is_claimed: false,
                     created_at: new Date().toISOString()
                 }, { onConflict: 'id' })

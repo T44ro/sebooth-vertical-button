@@ -1055,7 +1055,7 @@
 
 .tableHeader {
     display: grid;
-    grid-template-columns: 2fr 0.5fr 0.75fr 1.25fr;
+    grid-template-columns: 1.5fr 1fr 0.5fr 0.6fr 0.8fr 0.5fr;
     gap: var(--spacing-md);
     padding: var(--spacing-md) var(--spacing-lg);
     background: var(--color-bg-tertiary);
@@ -1069,7 +1069,7 @@
 
 .tableRow {
     display: grid;
-    grid-template-columns: 2fr 0.5fr 0.75fr 1.25fr;
+    grid-template-columns: 1.5fr 1fr 0.5fr 0.6fr 0.8fr 0.5fr;
     gap: var(--spacing-md);
     padding: var(--spacing-md) var(--spacing-lg);
     border-bottom: 1px solid var(--color-border);
@@ -1108,6 +1108,19 @@
 }
 
 .dateCell {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+}
+
+.frameCell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+}
+
+.timeCell {
     color: var(--color-text-secondary);
     font-size: var(--font-size-xs);
 }

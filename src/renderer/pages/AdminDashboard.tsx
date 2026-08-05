@@ -385,15 +385,20 @@ function AdminDashboard(): JSX.Element {
         const allResult = await getSessionHistory({ limit: 10000, offset: 0 })
         if (!('data' in allResult) || allResult.data.length === 0) return
 
-        const headers = ['No', 'Session ID', 'Email', 'Print Count', 'Gallery URL', 'Date/Time']
-        const rows = allResult.data.map((item, index) => [
-            index + 1,
-            item.session_id || item.id,
-            item.email || '-',
-            item.print_count,
-            item.gallery_url || '-',
-            new Date(item.created_at).toLocaleString('id-ID')
-        ])
+        const headers = ['No', 'Session ID', 'Email', 'Frame', 'Print Count', 'Gallery URL', 'Tanggal', 'Jam']
+        const rows = allResult.data.map((item, index) => {
+            const d = new Date(item.created_at)
+            return [
+                index + 1,
+                item.session_id || item.id,
+                item.email || '-',
+                item.frame_name || '-',
+                item.print_count,
+                item.gallery_url || '-',
+                d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+                d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            ]
+        })
 
         const csvContent = [headers, ...rows]
             .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -1921,14 +1926,19 @@ function AdminDashboard(): JSX.Element {
                                 <div className={styles.historyTable}>
                                     <div className={styles.tableHeader}>
                                         <span>Email</span>
+                                        <span>Frame</span>
                                         <span>Prints</span>
                                         <span>Gallery</span>
-                                        <span>Date/Time</span>
+                                        <span>Tanggal</span>
+                                        <span>Jam</span>
                                     </div>
                                     {historyData.map(item => (
                                         <div key={item.id} className={styles.tableRow}>
                                             <span className={styles.emailCell}>
                                                 {item.email || <em style={{ opacity: 0.5 }}>No email</em>}
+                                            </span>
+                                            <span className={styles.frameCell}>
+                                                🖼️ {item.frame_name || '-'}
                                             </span>
                                             <span className={styles.printCell}>
                                                 🖨️ {item.print_count}
@@ -1944,10 +1954,14 @@ function AdminDashboard(): JSX.Element {
                                                 </a>
                                             </span>
                                             <span className={styles.dateCell}>
-                                                {new Date(item.created_at).toLocaleString('id-ID', {
+                                                {new Date(item.created_at).toLocaleDateString('id-ID', {
                                                     day: '2-digit',
                                                     month: 'short',
-                                                    year: 'numeric',
+                                                    year: 'numeric'
+                                                })}
+                                            </span>
+                                            <span className={styles.timeCell}>
+                                                {new Date(item.created_at).toLocaleTimeString('id-ID', {
                                                     hour: '2-digit',
                                                     minute: '2-digit'
                                                 })}
